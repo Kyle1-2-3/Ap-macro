@@ -530,7 +530,12 @@ function doSearch(){
   if(res.status==="many"){ msg.innerHTML = "Did you mean — " + listLinks(res.items); wireMsgLinks(); return; }
   // Not in local database — ask the Worker to look it up live
   const rawQ = $("#q").value.trim();
-  msg.innerHTML = `Searching globally for <em>${esc(rawQ)}</em> — this takes a few seconds...`;
+  msg.innerHTML = "";
+  // Show loading in the de-brand stage area
+  $("#debrandSection").classList.remove("hidden");
+  $("#resultsSection").classList.add("hidden");
+  $("#stage").innerHTML = `<div class="loading"><em>Researching "${esc(rawQ)}" across global markets<span class="dots"></span></em></div>`;
+  $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
   fetchFromWorker(rawQ);
 }
 
@@ -540,23 +545,27 @@ async function fetchFromWorker(query){
     const res = await fetch(`${WORKER_URL}/?q=${encodeURIComponent(query)}`);
     const data = await res.json();
     if(!data.found){
+      $("#debrandSection").classList.add("hidden");
       msg.innerHTML = `Could not find "<em>${esc(query)}</em>". Try a more specific name (e.g. "Prada Saffiano wallet"). In the database: ` + listLinks(ITEMS);
       wireMsgLinks();
       return;
     }
-    // Build an ITEMS-compatible object from the Worker response
     const id = "live-" + Date.now();
     const it = {
       id, name: data.name, brand: data.brand, category: data.category, origin: data.origin,
       img: data.image_url || "", aliases: [],
       genka: data.blurb || "production cost data not available for this item.",
       prices: data.prices,
-      _live: true  // flag: came from the Worker, not local
+      _live: true
     };
     ITEMS.push(it);
+    current = it;
+    revealed = false;
+    $("#q").value = "";
     msg.innerHTML = "";
-    pick(id);
+    renderStage();
   } catch(e) {
+    $("#debrandSection").classList.add("hidden");
     msg.innerHTML = `Network error — could not reach the lookup service. In the database: ` + listLinks(ITEMS);
     wireMsgLinks();
   }
