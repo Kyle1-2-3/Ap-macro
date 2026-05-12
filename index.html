@@ -247,11 +247,11 @@
       <div class="sec-head">
         <span class="overline">02 — The Product</span>
         <h2>Name the item</h2>
-        <p class="prose">Type a product and we'll look it up. If it's not in the curated database, AI will research it live — with real prices, an image, and the brand hidden.</p>
+        <p class="prose">Name any branded product — AI will research it live, find an image, look up prices in seven countries, and hide the logo.</p>
       </div>
       <div class="search-wrap">
         <div class="search-field">
-          <input id="q" type="text" placeholder="e.g. Louis Vuitton Neverfull, Rolex Submariner, PlayStation 5…" autocomplete="off" />
+          <input id="q" type="text" placeholder="e.g. Gucci belt, Prada bag, Rolex Submariner, iPhone 16 Pro…" autocomplete="off" />
           <button id="goBtn">Analyze</button>
         </div>
         <div class="search-msg" id="searchMsg"></div>
@@ -383,82 +383,7 @@ const COUNTRIES = {
   "South Korea":{cc:"KR", tax:"10% VAT; visitors get instant or airport refunds, and the duty-free scene is large."}
 };
 
-const ITEMS = [
-  { id:"lv-neverfull", name:"Louis Vuitton Neverfull MM", brand:"LOUIS VUITTON", category:"handbag", origin:"France",
-    img:"images/lv-neverfull.jpg", logoBox:{x:13,y:44,w:74,h:48}, aliases:["neverfull","louis vuitton","lv tote","lv bag","louisvuitton"],
-    genka:"a coated-canvas tote. Estimates put the materials-and-labour cost of a bag like this at roughly 10–25% of retail — the remainder is brand, marketing, store rent and margin.",
-    prices:{ "United States":2030, "France":1650, "Italy":1650, "United Kingdom":1580, "Switzerland":1750, "Japan":313500, "South Korea":2920000 } },
-
-  { id:"chanel-flap", name:"Chanel Classic Flap (Medium)", brand:"CHANEL", category:"handbag", origin:"France",
-    img:"images/chanel-flap.jpg", logoBox:{x:42,y:69,w:16,h:11}, aliases:["chanel","classic flap","chanel bag","chanel flap","11.12"],
-    genka:"Chanel has roughly tripled this bag's price since 2010 — far faster than general inflation. Reported production cost is a small fraction of retail.",
-    prices:{ "United States":10800, "France":9300, "Italy":9300, "United Kingdom":9030, "Switzerland":9700, "Japan":1727000, "South Korea":15400000 } },
-
-  { id:"gucci-marmont", name:"Gucci GG Marmont (Small)", brand:"GUCCI", category:"shoulder bag", origin:"Italy",
-    img:"images/gucci-marmont.jpg", logoBox:{x:41,y:49,w:25,h:19}, aliases:["gucci","marmont","gg marmont","gucci bag"],
-    genka:"leather, hardware and Italian labour are real costs — but the double-G plaque does most of the pricing work.",
-    prices:{ "United States":2350, "France":1980, "Italy":1980, "United Kingdom":1890, "Switzerland":2100, "Japan":360800, "South Korea":3290000 } },
-
-  { id:"cartier-love", name:"Cartier Love Bracelet (yellow gold, small)", brand:"CARTIER", category:"bracelet", origin:"France",
-    img:"images/cartier-love.jpg", aliases:["cartier","love bracelet","cartier love","cartier bracelet"],
-    genka:"real 18-karat gold is a genuine commodity cost here — but the screw motif and the Cartier name still carry a steep premium over the metal value.",
-    prices:{ "United States":7350, "France":7150, "Italy":7150, "United Kingdom":6650, "Switzerland":6900, "Japan":1185000, "South Korea":10500000 } },
-
-  { id:"rolex-sub", name:"Rolex Submariner Date", brand:"ROLEX", category:"watch", origin:"Switzerland",
-    img:"images/rolex-sub.jpg", aliases:["rolex","submariner","rolex submariner","sub","rolex sub","126610"],
-    genka:"a genuinely engineered object — but the list price is also propped up by scarcity and waitlists. Resale frequently exceeds retail, which is unusual.",
-    prices:{ "United States":10250, "France":9950, "Italy":9950, "United Kingdom":8400, "Switzerland":8500, "Japan":1592800, "South Korea":14200000 } },
-
-  { id:"moncler-maya", name:"Moncler Maya Down Jacket", brand:"MONCLER", category:"down jacket", origin:"Italy",
-    img:"images/moncler-maya.jpg", aliases:["moncler","maya","moncler maya","moncler jacket","puffer"],
-    genka:"down fill and a glossy shell cost real money — yet a generic equivalent puffer sells for a fraction; the arm badge does the rest.",
-    prices:{ "United States":2150, "France":1850, "Italy":1850, "United Kingdom":1670, "Switzerland":1990, "Japan":330000, "South Korea":2890000 } },
-
-  { id:"burberry-trench", name:"Burberry Kensington Trench", brand:"BURBERRY", category:"trench coat", origin:"United Kingdom",
-    img:"images/burberry-trench.jpg", aliases:["burberry","trench","burberry trench","kensington","trench coat"],
-    genka:"gabardine cotton and tailoring cost real money — but the check lining and the name do a great deal of the work in that price.",
-    prices:{ "United States":2490, "France":2150, "Italy":2150, "United Kingdom":1790, "Switzerland":2250, "Japan":393800, "South Korea":3490000 } },
-
-  { id:"iphone-16-pro", name:"Apple iPhone 16 Pro (256GB)", brand:"APPLE", category:"smartphone", origin:"United States",
-    img:"images/iphone-16-pro.jpg", aliases:["iphone","iphone 16","iphone 16 pro","apple","apple iphone"],
-    genka:"teardown estimates put the bill of materials around 35–45% of retail — high for a consumer good; brand, software and ecosystem carry the rest.",
-    prices:{ "United States":1099, "France":1329, "Italy":1339, "United Kingdom":1099, "Switzerland":1199, "Japan":179800, "South Korea":1550000 } },
-
-  { id:"macbook-air", name:"Apple MacBook Air 13\"", brand:"APPLE", category:"laptop", origin:"United States",
-    img:"images/macbook-air.jpg", aliases:["macbook","macbook air","apple laptop","mac air","laptop"],
-    genka:"a higher materials share than most consumer goods — but the design, the chip and the software ecosystem still command a clear premium.",
-    prices:{ "United States":999, "France":1199, "Italy":1209, "United Kingdom":999, "Switzerland":1099, "Japan":164800, "South Korea":1390000 } },
-
-  { id:"airpods-pro", name:"Apple AirPods Pro (2nd gen)", brand:"APPLE", category:"pair of earbuds", origin:"United States",
-    img:"images/airpods-pro.jpg", aliases:["airpods","airpods pro","apple earbuds","earbuds","air pods"],
-    genka:"teardown estimates put parts well under half of retail; the rest is the chip, the software handoff features and the brand.",
-    prices:{ "United States":249, "France":279, "Italy":279, "United Kingdom":229, "Switzerland":249, "Japan":39800, "South Korea":359000 } },
-
-  { id:"ps5", name:"Sony PlayStation 5 (Slim, disc)", brand:"PLAYSTATION", category:"games console", origin:"Japan",
-    img:"images/ps5.jpg", aliases:["ps5","playstation","playstation 5","sony ps5","console"],
-    genka:"consoles are often sold near or below build cost at launch — the money is in games and subscriptions. A neat contrast with luxury pricing.",
-    prices:{ "United States":499.99, "France":549.99, "Italy":549.99, "United Kingdom":479.99, "Switzerland":549.90, "Japan":66980, "South Korea":688400 } },
-
-  { id:"switch-oled", name:"Nintendo Switch (OLED model)", brand:"NINTENDO", category:"games console", origin:"Japan",
-    img:"images/switch-oled.jpg", aliases:["switch","nintendo","nintendo switch","switch oled","console"],
-    genka:"modest hardware with a healthy margin for a games company — but it's mass-market, so retail competition, not duty-free logic, sets the cheapest country.",
-    prices:{ "United States":349.99, "France":349.99, "Italy":349.99, "United Kingdom":309.99, "Switzerland":349, "Japan":37980, "South Korea":415000 } },
-
-  { id:"dyson-airwrap", name:"Dyson Airwrap Complete", brand:"DYSON", category:"hair styler", origin:"United Kingdom",
-    img:"images/dyson-airwrap.jpg", aliases:["dyson","airwrap","dyson airwrap","hair styler","hair tool"],
-    genka:"genuine motor and engineering cost — but Dyson prices well above functional rivals, leaning on design and brand. Notably cheaper in the UK/EU than the US.",
-    prices:{ "United States":599.99, "France":549.99, "Italy":549.99, "United Kingdom":479.99, "Switzerland":599, "Japan":84700, "South Korea":699000 } },
-
-  { id:"af1", name:"Nike Air Force 1 '07", brand:"NIKE", category:"pair of sneakers", origin:"United States",
-    img:"images/af1.jpg", aliases:["nike","air force 1","af1","air force","nike af1","airforce 1"],
-    genka:"often-cited estimates put manufacturing and materials well under a quarter of retail; marketing, athlete deals, logistics and retailer margin make up the bulk.",
-    prices:{ "United States":115, "France":119.99, "Italy":119.99, "United Kingdom":104.99, "Switzerland":119.90, "Japan":16500, "South Korea":139000 } },
-
-  { id:"lego-falcon", name:"LEGO Millennium Falcon (75192)", brand:"LEGO", category:"building set", origin:"Denmark",
-    img:"images/lego-falcon.jpg", aliases:["lego","millennium falcon","lego falcon","75192","star wars lego"],
-    genka:"7,541 pieces of ABS plastic plus a licensed Star Wars name. A useful contrast case — a mass-market good where the cheapest country is set by retail competition, not duty-free luxury logic.",
-    prices:{ "United States":849.99, "France":849.99, "Italy":849.99, "United Kingdom":734.99, "Switzerland":799.95, "Japan":132980, "South Korea":1159000 } }
-];
+const ITEMS = [];
 
 const WORKER_URL = "https://ap-macro-lookup.bridge11korea.workers.dev";
 
@@ -493,49 +418,18 @@ function updateRateNote(){
 /* ---- suggestions ---- */
 function renderSuggest(){
   const box = $("#suggest");
-  box.innerHTML = `<span class="s-lbl">In the database</span>` +
-    ITEMS.map(it=>`<a href="#" data-id="${it.id}">${esc(it.name)}</a>`).join("");
-  box.querySelectorAll("a").forEach(a=>{ a.onclick = e => { e.preventDefault(); pick(a.dataset.id); }; });
+  const examples = ["Gucci belt","Prada bag","Rolex Submariner","Chanel Classic Flap","iPhone 16 Pro","Nike Air Force 1","Cartier Love Bracelet","Moncler jacket"];
+  box.innerHTML = `<span class="s-lbl">Try</span>` +
+    examples.map(s=>`<a href="#" data-q="${esc(s)}">${esc(s)}</a>`).join("");
+  box.querySelectorAll("a").forEach(a=>{ a.onclick = e => { e.preventDefault(); $("#q").value=a.dataset.q; doSearch(); }; });
 }
 
 /* ---- search ---- */
-function findItem(rawText){
-  const q = rawText.trim().toLowerCase();
-  if(!q) return {status:"empty"};
-
-  // 1. Exact name match (strongest)
-  let hits = ITEMS.filter(it => it.name.toLowerCase().includes(q));
-  if(hits.length===1) return {status:"one", item:hits[0]};
-  if(hits.length>1) return {status:"many", items:hits};
-
-  // 2. ALL words in query must appear in the item (name+brand+category+aliases)
-  const words = q.split(/\s+/).filter(w => w.length > 1);
-  hits = ITEMS.filter(it=>{
-    const blob = (it.name+" "+it.brand+" "+it.category+" "+it.aliases.join(" ")).toLowerCase();
-    return words.every(w=>blob.includes(w));
-  });
-  if(hits.length===1) return {status:"one", item:hits[0]};
-  if(hits.length>1) return {status:"many", items:hits};
-
-  // 3. No good local match → let the Worker handle it
-  return {status:"none"};
-}
-function listLinks(items){
-  return items.map(it=>`<a href="#" data-id="${it.id}">${esc(it.name)}</a>`).join(" · ");
-}
-function wireMsgLinks(){
-  $("#searchMsg").querySelectorAll("a").forEach(a=>a.onclick=e=>{e.preventDefault();$("#searchMsg").innerHTML="";pick(a.dataset.id);});
-}
 function doSearch(){
-  const res = findItem($("#q").value);
+  const rawQ = ($("#q").value || "").trim();
   const msg = $("#searchMsg");
-  if(res.status==="empty"){ msg.textContent = "Type a product name first."; return; }
-  if(res.status==="one"){ msg.innerHTML=""; pick(res.item.id); return; }
-  if(res.status==="many"){ msg.innerHTML = "Did you mean — " + listLinks(res.items); wireMsgLinks(); return; }
-  // Not in local database — ask the Worker to look it up live
-  const rawQ = $("#q").value.trim();
+  if(!rawQ){ msg.textContent = "Type a product name first."; return; }
   msg.innerHTML = "";
-  // Show loading in the de-brand stage area
   $("#debrandSection").classList.remove("hidden");
   $("#resultsSection").classList.add("hidden");
   $("#stage").innerHTML = `<div class="loading"><em>Researching "${esc(rawQ)}" across global markets<span class="dots"></span></em></div>`;
@@ -550,8 +444,7 @@ async function fetchFromWorker(query){
     const data = await res.json();
     if(!data.found){
       $("#debrandSection").classList.add("hidden");
-      msg.innerHTML = `Could not find "<em>${esc(query)}</em>". Try a more specific name (e.g. "Prada Saffiano wallet"). In the database: ` + listLinks(ITEMS);
-      wireMsgLinks();
+      msg.innerHTML = `Could not find "<em>${esc(query)}</em>". Try a more specific product name, e.g. "Gucci GG Marmont belt" or "Prada Saffiano wallet".`;
       return;
     }
     const id = "live-" + Date.now();
@@ -559,8 +452,7 @@ async function fetchFromWorker(query){
       id, name: data.name, brand: data.brand, category: data.category, origin: data.origin,
       img: data.image_url || "", aliases: [],
       genka: data.blurb || "production cost data not available for this item.",
-      prices: data.prices,
-      _live: true
+      prices: data.prices
     };
     ITEMS.push(it);
     current = it;
@@ -570,8 +462,7 @@ async function fetchFromWorker(query){
     renderStage();
   } catch(e) {
     $("#debrandSection").classList.add("hidden");
-    msg.innerHTML = `Network error — could not reach the lookup service. In the database: ` + listLinks(ITEMS);
-    wireMsgLinks();
+    msg.innerHTML = `Network error — could not reach the lookup service. Please try again.`;
   }
 }
 
