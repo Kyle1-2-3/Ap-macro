@@ -1,38 +1,45 @@
 # Where I left off — AP Macro VC project
 
-_Last updated: 2026-05-11 (evening)_
+_Last updated: 2026-05-11 (late evening)_
 
 ## TL;DR
-The website is built, on GitHub, and **live on the internet**. Core thing left: replace the placeholder prices with researched ones, add the remaining product photos, and do the presentation + executive summary.
+Website is built, on GitHub, and **live**. Currently mid-decision on whether to add a live "search any product" feature (needs a small free serverless backend) or keep the curated-database approach. A Cloudflare Worker that does the live lookup is already written but not deployed or wired in.
 
 ## Live + repo
-- **Live site:** https://kyle1-2-3.github.io/Ap-macro/  (updates automatically ~30–60s after any push)
-- **Repo:** https://github.com/Kyle1-2-3/Ap-macro
-- Local copy: `~/Documents/ap-macro-site/` — the whole thing is git-connected now; `gh` is logged in (account Kyle1-2-3), so Claude can push updates on request.
+- **Live site:** https://kyle1-2-3.github.io/Ap-macro/
+- **Repo:** https://github.com/Kyle1-2-3/Ap-macro  (3 commits so far)
+- Local: `~/Documents/ap-macro-site/` — git-connected; `gh` CLI installed + logged in (account Kyle1-2-3); `git` + Homebrew already on the Mac. Claude can push updates on request → site auto-redeploys in ~1 min.
 
-## What the site is now
-"Should You Buy It Here? — The Global Price of Brands." Flow: pick your shopping country → search a product → see it de-branded (logo blurred on the photo) and decide if you'd still buy it → see the country-by-country price ranking + chart + table + a macro "verdict" + a 原価 note → read 4 macro explainer cards (exchange rates, PPP/Big Mac index, tariffs & VAT, shopping-tourism-as-exports). Fonts: Playfair Display + Inter. 15 products in the database.
+## The site as it stands
+"Should You Buy It Here? — The Global Price of Brands." Flow: pick shopping country → search a product (curated DB, 15 items) → de-brand step (photo blurs only the logo region via per-item `logoBox`; photos with no visible logo show clean) → country price ranking + chart + table + macro "verdict" + 原価 note → 4 macro explainer cards (exchange rates, PPP/Big Mac index, tariffs & VAT, shopping tourism = exports). Fonts: Playfair Display + Inter. Prices are placeholder estimates pending research.
 
-## Photos status (in `images/`)
-- ✅ Have real photos: louis vuitton (lv-neverfull), chanel (chanel-flap), gucci (gucci-marmont) — uploaded by me, with logo-only blur boxes. Plus iphone-16-pro, macbook-air, airpods-pro, ps5 — scraped from Wikipedia, shown clean (no visible logo to censor).
-- ⬜ Still need a photo (upload into `images/` with the exact filename): rolex-sub.jpg, af1.jpg, lego-falcon.jpg, dyson-airwrap.jpg, moncler-maya.jpg, cartier-love.jpg, burberry-trench.jpg. (Wikimedia doesn't have these; grab from brand sites / Google Images.) After uploading, ask Claude to add a precise `logoBox` for each.
-- The iphone photo is just a black-screen front view — fine, but swap it for something nicer if you want.
+## Photos (`images/`)
+- ✅ Have: lv-neverfull, chanel-flap, gucci-marmont (uploaded by user, with logoBoxes) + iphone-16-pro, macbook-air, airpods-pro, ps5 (scraped from Wikipedia, shown clean).
+- ⬜ Still need (upload into `images/` with these exact names): rolex-sub.jpg, af1.jpg, lego-falcon.jpg, dyson-airwrap.jpg, moncler-maya.jpg, cartier-love.jpg, burberry-trench.jpg. After uploading, ask Claude for a `logoBox`.
+- iphone photo is a plain black-screen front view — swap if desired.
 
-## ⬜ TODO (rough priority)
-1. **Send the proposal to Ms. Napier** if not done — text is in PROJECT_LOG.md ("Phase 2 — DEFINE"). It was due May 11; send it ASAP and note it's a little late.
-2. **Replace the placeholder prices & exchange rates** with researched figures. Data lives in a clearly-commented list near the bottom of `index.html` (search "EDIT YOUR DATA HERE"). Sources: brand websites in each region, articles on "cheapest country to buy X", central-bank exchange rates. Claude can web-research specific items and update the data on request.
-3. **Add the remaining 7 product photos** (see above).
-4. **Keep logging prompts** in PROMPT_LOG.md — every time you direct the AI to build/fix/change something. Rubric wants 3–5 documented iterations.
-5. **Update PROJECT_LOG.md** at the end of each class (Ms. Napier checks it).
-6. **Make a user-flow diagram** (there's a text version at the bottom of the site to base it on).
-7. **Build the 5-min Demo Day presentation + the one-page Executive Summary** (Why / How / What — see PROJECT_LOG.md draft notes).
-8. Practice the live demo so nothing breaks on stage.
+## OPEN DECISION: live product search ("type any product → site fetches it")
+We discussed: a static GitHub Pages site can't safely call Google/Gemini (no server → an API key in the page would be public and get stolen). Real solution = a tiny free **Cloudflare Worker** that holds the Gemini key server-side and relays requests; the site calls the Worker.
+- **Worker code is already written:** `worker/worker.js` (calls Gemini 2.5 Flash with Google Search grounding, returns brand/origin/category/blurb/per-country prices/image URL/sources). Deploy steps: `worker/DEPLOY.md`.
+- **Status: NOT deployed, NOT wired into the site.** Needs the user to (1) get a free Gemini API key at aistudio.google.com/apikey, (2) make a free Cloudflare account, (3) paste the Worker code into Cloudflare's browser editor and add the key as a secret named `GEMINI_API_KEY`, (4) give Claude the Worker URL → Claude wires `index.html` to it and pushes.
+- User was hesitant about the Cloudflare step (wanted to skip the "extra account"). The alternative is to drop the live-search idea and stay with the curated database (Claude expands it on request — name new products, Claude researches + adds them). **Pick one before building further.**
+- Note even if built: auto-fetched prices/images for arbitrary products will be inconsistent; keep the 15 curated items as reliable demo fallback.
+
+## Other TODO (rough priority)
+1. Send the proposal to Ms. Napier (text in PROJECT_LOG.md → "Phase 2 — DEFINE"). Was due May 11.
+2. Resolve the live-search decision (above).
+3. Replace placeholder prices/exchange rates with researched figures (data list near bottom of `index.html`, "EDIT YOUR DATA HERE"). Claude can web-research specific items.
+4. Add the remaining 7 product photos.
+5. Keep `PROMPT_LOG.md` updated (rubric wants 3–5 AI iterations documented).
+6. Update PROJECT_LOG.md each class.
+7. User-flow diagram; 5-min presentation; one-page Executive Summary.
 
 ## Key files
-- `index.html` — the website (the data list near the bottom is the main thing you'll edit)
-- `images/` — product photos (+ `README.txt` listing the filenames the site looks for)
-- `PROJECT_LOG.md` — daily log + the proposal text (share with Ms. Napier)
-- `PROMPT_LOG.md` — log of AI prompts/iterations (for the Executive Summary)
+- `index.html` — the website (edit the data list near the bottom)
+- `worker/worker.js`, `worker/DEPLOY.md` — the optional live-lookup backend (not deployed yet)
+- `images/` — product photos (+ `README.txt` with the filenames the site expects)
+- `PROJECT_LOG.md` — daily log + proposal text (share with Ms. Napier)
+- `PROMPT_LOG.md` — AI prompt/iteration log (for the Executive Summary)
 - `WHERE_I_LEFT_OFF.md` — this file
 - `CLAUDE.md` — notes for the AI assistant
-- `style.css`, `script.js` — unused leftovers from the very first version; safe to ignore/delete
+- `style.css`, `script.js` — unused leftovers; safe to ignore/delete

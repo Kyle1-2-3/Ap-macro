@@ -54,7 +54,10 @@ _(Rewrite in your own words — graded.)_ It has the most "wow" for a Demo Day (
 - **Put it on GitHub and made it live:** repo at github.com/Kyle1-2-3/Ap-macro; live at https://kyle1-2-3.github.io/Ap-macro/ via GitHub Pages. Set up the GitHub CLI so future updates push automatically.
 - **Next class:** send the proposal to Ms. Napier; research real prices to replace the placeholder data; add the remaining 7 product photos. (Full checklist in WHERE_I_LEFT_OFF.md.)
 
-**[next date] —**
+**2026-05-11 (late, same day) —**
+- Researched how to let the site look up *any* product live. A static GitHub Pages site can't safely call Google/Gemini directly (an API key in the page would be public). Decided to add a small free **Cloudflare Worker** as a backend proxy that holds the key and calls Gemini (with Google Search grounding).
+- Wrote the Worker code (`worker/worker.js`) + deploy guide (`worker/DEPLOY.md`); pushed to GitHub. Not deployed/wired yet — needs me to make a Gemini API key + a Cloudflare account first.
+- Still weighing: do the Worker (live search, more setup, flakier demo) vs. keep the curated database (reliable, AI expands it on request). Leaning toward the Worker for the "wow" factor.
 
 **[next date] —**
 
