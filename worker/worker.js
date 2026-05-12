@@ -8,7 +8,7 @@
 
 const COUNTRIES = ["United States","France","Italy","United Kingdom","Switzerland","Japan","South Korea"];
 const MODEL = "gemini-2.5-flash";
-const API_KEY_FALLBACK = "AIzaSyCZcjYiw2K0bgAEr_Mc6EaOayUuYoaGPEo";
+const API_KEY_FALLBACK = "AIzaSyA_RxlBix7riczlYFCm5K9pnOd_lgvvzOs";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +45,7 @@ export default {
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             tools: [{ google_search: {} }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
+            generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
           }),
         }
       );

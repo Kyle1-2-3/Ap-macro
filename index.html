@@ -502,18 +502,22 @@ function renderSuggest(){
 function findItem(rawText){
   const q = rawText.trim().toLowerCase();
   if(!q) return {status:"empty"};
-  let hits = ITEMS.filter(it =>
-    it.name.toLowerCase().includes(q) || it.brand.toLowerCase().includes(q) ||
-    it.category.toLowerCase().includes(q) || it.aliases.some(a => a.includes(q) || q.includes(a)) );
-  if(hits.length===0){
-    const words = q.split(/\s+/);
-    hits = ITEMS.filter(it=>{
-      const blob = (it.name+" "+it.brand+" "+it.category+" "+it.aliases.join(" ")).toLowerCase();
-      return words.every(w=>blob.includes(w));
-    });
-  }
+
+  // 1. Exact name match (strongest)
+  let hits = ITEMS.filter(it => it.name.toLowerCase().includes(q));
   if(hits.length===1) return {status:"one", item:hits[0]};
   if(hits.length>1) return {status:"many", items:hits};
+
+  // 2. ALL words in query must appear in the item (name+brand+category+aliases)
+  const words = q.split(/\s+/).filter(w => w.length > 1);
+  hits = ITEMS.filter(it=>{
+    const blob = (it.name+" "+it.brand+" "+it.category+" "+it.aliases.join(" ")).toLowerCase();
+    return words.every(w=>blob.includes(w));
+  });
+  if(hits.length===1) return {status:"one", item:hits[0]};
+  if(hits.length>1) return {status:"many", items:hits};
+
+  // 3. No good local match → let the Worker handle it
   return {status:"none"};
 }
 function listLinks(items){
