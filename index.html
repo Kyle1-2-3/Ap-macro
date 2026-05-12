@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Should You Buy It Here — The Global Price of Brands</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f4ee;          /* warm ivory   */
+    --bg-soft:#fdfbf6;     /* cards        */
+    --ink:#1f1c17;         /* near-black   */
+    --ink-soft:#615b50;    /* muted text   */
+    --line:#dcd5c6;        /* hairline     */
+    --line-strong:#1f1c17; /* black rule   */
+    --gold:#8a6d33;        /* antique gold */
+    --gold-soft:#b59a5f;
+    --serif:"Playfair Display",Georgia,"Times New Roman",serif;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:var(--sans);font-size:16.5px;font-weight:400;line-height:1.72;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1060px;margin:0 auto;padding:0 28px}
+  .prose{max-width:660px}
+  h1,h2,h3,h4{font-family:var(--serif);font-weight:500;line-height:1.2;letter-spacing:.005em}
+  em{font-style:italic}
+  a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line);transition:border-color .2s,color .2s}
+  a:hover{border-color:var(--ink)}
+  .overline{font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--gold)}
+  .rule{height:1px;background:var(--line);border:none;margin:0}
+  .hidden{display:none}
+
+  /* ---------- top bar ---------- */
+  .topbar{border-bottom:1px solid var(--line)}
+  .topbar .wrap{display:flex;justify-content:space-between;align-items:center;padding-top:20px;padding-bottom:20px}
+  .mark{font-family:var(--serif);font-size:19px;font-weight:600;letter-spacing:.02em}
+  .mark .dot{color:var(--gold)}
+  .topbar nav a{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;border:none;margin-left:28px;color:var(--ink-soft)}
+  .topbar nav a:hover{color:var(--ink)}
+  @media(max-width:640px){.topbar nav{display:none}}
+
+  /* ---------- hero ---------- */
+  .hero{padding:80px 0 66px;text-align:center;border-bottom:1px solid var(--line)}
+  .hero .overline{display:block;margin-bottom:24px}
+  .hero h1{font-size:clamp(36px,6.6vw,68px);font-weight:600;letter-spacing:0}
+  .hero h1 .it{font-style:italic;font-weight:400;color:var(--gold)}
+  .hero p.lede{font-size:clamp(16px,2vw,18.5px);color:var(--ink-soft);max-width:600px;margin:26px auto 0;font-weight:400}
+
+  /* ---------- generic section ---------- */
+  section{padding:66px 0}
+  .sec-head{margin-bottom:36px}
+  .sec-head .overline{display:block;margin-bottom:14px}
+  .sec-head h2{font-size:clamp(27px,3.8vw,40px);font-weight:600}
+  .sec-head p{color:var(--ink-soft);margin-top:14px}
+
+  /* ---------- disclaimer aside ---------- */
+  .disclaimer{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0;
+    font-size:14.5px;color:var(--ink-soft);display:flex;gap:16px;align-items:flex-start}
+  .disclaimer .lbl{font-size:11.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);white-space:nowrap;padding-top:4px}
+  .disclaimer em{font-style:italic}
+
+  /* ---------- search ---------- */
+  .search-wrap{max-width:680px}
+  .search-field{display:flex;align-items:center;border-bottom:2px solid var(--line-strong);padding-bottom:12px;gap:16px}
+  .search-field input{flex:1;border:none;background:transparent;font-family:var(--serif);font-size:clamp(20px,3.2vw,28px);
+    color:var(--ink);font-weight:400;padding:0}
+  .search-field input::placeholder{color:#b6af9e;font-style:italic}
+  .search-field input:focus{outline:none}
+  .search-field button{flex:none;background:none;border:none;cursor:pointer;font-family:var(--sans);
+    font-size:12.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--ink);padding:8px 0;border-bottom:1.5px solid var(--ink)}
+  .search-field button:hover{color:var(--gold);border-color:var(--gold)}
+  .suggest{margin-top:20px;font-size:14px;color:var(--ink-soft);line-height:2}
+  .suggest .s-lbl{font-size:11.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-right:12px}
+  .suggest a{font-size:14.5px;margin:0 5px;color:var(--ink-soft);border-bottom:1px solid var(--line)}
+  .suggest a:hover{color:var(--ink);border-color:var(--ink)}
+  .search-msg{margin-top:18px;font-size:15px;color:var(--gold);min-height:1.4em;line-height:1.9}
+  .search-msg a{border-bottom:1px solid var(--gold-soft)}
+
+  /* ---------- locale picker ---------- */
+  .locale{display:flex;flex-wrap:wrap;gap:20px;align-items:center;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:24px 0;margin-top:32px}
+  .locale label{font-size:11.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
+  .locale select{font-family:var(--serif);font-size:20px;border:none;border-bottom:1.5px solid var(--line-strong);
+    background:transparent;color:var(--ink);padding:5px 28px 5px 2px;cursor:pointer}
+  .locale select:focus{outline:none}
+  .locale .rate-note{font-size:13.5px;color:var(--ink-soft);flex:1;min-width:220px}
+
+  /* ---------- de-brand stage ---------- */
+  .stage{border:1px solid var(--line);background:var(--bg-soft)}
+  .stage-inner{padding:48px 40px;text-align:center}
+  .object-wrap{display:inline-block;margin-bottom:14px;text-align:center}
+  .img-holder{display:inline-block;position:relative;line-height:0}
+  .obj-img{display:block;width:auto;height:auto;max-width:min(340px,78vw);max-height:46vh;
+    border:1px solid var(--line);background:#fff;filter:blur(0);transition:filter .4s ease}
+  .obj-img.soft{filter:blur(9px) brightness(1.02)}
+  .obj-img.revealed{filter:blur(0)!important}
+  .logo-cover{position:absolute;backdrop-filter:blur(16px) brightness(.97);-webkit-backdrop-filter:blur(16px) brightness(.97);
+    background:rgba(22,19,14,.10);border-radius:2px;transition:opacity .35s}
+  .logo-cover.gone{opacity:0;pointer-events:none}
+  .obj-cap{display:block;font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--ink-soft);margin-top:12px;line-height:1.6}
+  .obj-cap.revealed{display:none}
+  .obj-frame{display:inline-block;border:1px solid var(--line);padding:34px 56px;background:#fff}
+  .obj-frame .obj-cat{font-family:var(--serif);font-size:clamp(24px,4vw,34px);font-style:italic;color:var(--ink)}
+  .obj-frame .obj-sub{font-size:11.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft);margin-top:10px}
+  .brand-line{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:.34em;text-transform:uppercase;
+    color:var(--ink);margin-bottom:8px;transition:filter .35s}
+  .brand-line.blurred{filter:blur(7px);user-select:none}
+  .origin-line{font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:28px}
+  .ask{font-family:var(--serif);font-size:clamp(20px,2.7vw,27px);font-weight:400;max-width:580px;margin:0 auto 8px;line-height:1.4}
+  .ask .price-em{font-style:italic;color:var(--gold);white-space:nowrap}
+  .choice-row{display:flex;gap:30px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+  .lk-btn{background:none;border:none;cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:600;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink);padding:9px 2px;border-bottom:1.5px solid var(--ink)}
+  .lk-btn.sub{color:var(--ink-soft);border-color:var(--line)}
+  .lk-btn:hover{color:var(--gold);border-color:var(--gold)}
+  .quip{margin-top:24px;font-size:14.5px;font-style:italic;color:var(--ink-soft);max-width:560px;margin-left:auto;margin-right:auto;line-height:1.6}
+  .loading{padding:64px 20px;text-align:center;font-family:var(--serif);font-style:italic;font-size:22px;color:var(--ink-soft)}
+  .loading .dots::after{content:"";animation:dots 1.2s steps(4,end) infinite}
+  @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}100%{content:""}}
+
+  /* ---------- results ---------- */
+  .verdict{border:1px solid var(--line-strong);padding:32px 36px}
+  .verdict .v-top{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px}
+  .verdict h3{font-size:clamp(23px,3.2vw,30px);font-weight:600}
+  .verdict h3 .cc{font-style:italic;font-weight:400;color:var(--gold)}
+  .verdict .v-price{font-family:var(--serif);font-size:clamp(23px,3.2vw,30px);font-weight:500}
+  .verdict p{margin-top:16px;font-size:15px;color:var(--ink-soft)}
+  .verdict p strong{color:var(--ink);font-weight:600}
+
+  .chart{margin-top:42px;display:flex;flex-direction:column}
+  .bar-row{display:grid;grid-template-columns:180px 1fr 130px;gap:18px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+  .bar-row:first-child{border-top:1px solid var(--line)}
+  .bar-row .cy{font-size:14px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .bar-row .cy .cc{font-size:10.5px;font-weight:600;letter-spacing:.12em;border:1px solid var(--line);padding:2px 6px;color:var(--ink-soft)}
+  .bar-row .cy .nm{color:var(--ink)}
+  .bar-row .cy .you-tag{font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+  .bar-track{height:16px;position:relative}
+  .bar-fill{height:100%;background:var(--ink)}
+  .bar-fill.cheapest{background:var(--gold)}
+  .bar-fill.home{background:repeating-linear-gradient(90deg,var(--ink),var(--ink) 7px,transparent 7px,transparent 10px)}
+  .bar-val{font-family:var(--serif);font-size:17px;font-weight:500;text-align:right}
+
+  .table-scroll{overflow-x:auto;margin-top:46px}
+  table{border-collapse:collapse;width:100%;min-width:600px;font-size:14px}
+  thead th{font-family:var(--sans);font-weight:600;font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--gold);text-align:left;padding:0 16px 13px;border-bottom:1.5px solid var(--line-strong)}
+  tbody td{padding:15px 16px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-soft)}
+  tbody td.country{color:var(--ink)}
+  tbody td .cc{font-size:10px;font-weight:600;letter-spacing:.1em;border:1px solid var(--line);padding:2px 6px;margin-right:8px;color:var(--ink-soft)}
+  tbody td .note-tag{display:block;font-size:11.5px;font-style:italic;color:var(--gold);margin-top:4px}
+  tbody td.num{font-family:var(--serif);font-size:16px;font-weight:500;color:var(--ink)}
+  tbody tr:last-child td{border-bottom:1.5px solid var(--line-strong)}
+
+  .genka{margin-top:36px;border-left:2px solid var(--gold);padding:8px 0 8px 24px;font-size:15px;color:var(--ink-soft);font-style:italic;line-height:1.65}
+  .genka strong{color:var(--ink);font-style:normal;font-weight:600}
+
+  /* ---------- learn cards ---------- */
+  .learn-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));border-top:1px solid var(--line)}
+  .learn{padding:32px 28px 32px 0;border-bottom:1px solid var(--line)}
+  .learn:not(:last-child){border-right:1px solid var(--line);padding-right:28px}
+  @media(max-width:760px){.learn{border-right:none!important;padding-right:0}}
+  .learn .num{font-family:var(--serif);font-size:14px;font-style:italic;color:var(--gold)}
+  .learn h4{font-size:22px;font-weight:600;margin:12px 0 12px}
+  .learn h4 em{color:var(--gold);font-weight:400}
+  .learn p{font-size:14.5px;color:var(--ink-soft)}
+  .learn .terms{margin-top:14px;font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink)}
+  .learn .terms span{color:var(--ink-soft);font-weight:400;letter-spacing:.06em}
+
+  /* ---------- flow ---------- */
+  .flow{counter-reset:step;border-top:1px solid var(--line)}
+  .flow .f-step{display:flex;gap:24px;align-items:baseline;padding:19px 0;border-bottom:1px solid var(--line)}
+  .flow .f-step::before{counter-increment:step;content:counter(step,decimal-leading-zero);font-family:var(--serif);
+    font-size:15px;font-style:italic;color:var(--gold);flex:none;width:36px}
+  .flow .f-step .f-txt{font-size:16px}
+  .flow .f-step .f-txt .f-sub{display:block;font-size:14px;color:var(--ink-soft);margin-top:3px}
+
+  footer{border-top:1.5px solid var(--line-strong);padding:36px 0 58px;font-size:13px;letter-spacing:.04em;color:var(--ink-soft)}
+  footer .mark{display:block;margin-bottom:12px}
+
+  @media(max-width:560px){
+    body{font-size:16px}
+    .bar-row{grid-template-columns:108px 1fr 90px;gap:10px}
+    .stage-inner{padding:34px 18px}
+    .obj-frame{padding:26px 28px}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <span class="mark">SHOULD YOU BUY IT HERE<span class="dot">.</span></span>
+    <nav>
+      <a href="#search">Search</a>
+      <a href="#learn">The Economics</a>
+      <a href="#flow">How It Works</a>
+    </nav>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="overline">AP Macroeconomics · Independent Project 2026</span>
+    <h1>The Same Object,<br>a <span class="it">Different</span> Price<br>at Every Border</h1>
+    <p class="lede">Name a branded product. Decide whether you'd still want it with the logo hidden — then see which country in the world sells it for the least, in your own currency, and why the price moves when you cross a frontier.</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- DISCLAIMER -->
+  <div class="wrap" style="padding-top:42px">
+    <div class="disclaimer">
+      <span class="lbl">Prototype</span>
+      <span>Prices and exchange rates shown are <em>illustrative estimates (≈ May 2026)</em> entered while the database is built. Before final submission they'll be replaced with figures researched from brand websites in each region, reporting on luxury pricing, and central-bank exchange rates. Product photos are placeholders until images are added to the <code>images/</code> folder.</span>
+    </div>
+  </div>
+
+  <!-- LOCALE -->
+  <section id="locale-sec">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="overline">01 — Locale</span>
+        <h2>Where are you shopping from?</h2>
+        <p class="prose">This sets the currency every price below is shown in — the money you actually carry.</p>
+      </div>
+      <div class="locale">
+        <label for="home">Shopping from</label>
+        <select id="home"></select>
+        <span id="rateNote" class="rate-note"></span>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- SEARCH -->
+  <section id="search">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="overline">02 — The Product</span>
+        <h2>Name the item</h2>
+        <p class="prose">Type a product and we'll look it up. A production version would have an AI research any product live; this prototype searches a curated, researched database — ask the builder to add anything missing.</p>
+      </div>
+      <div class="search-wrap">
+        <div class="search-field">
+          <input id="q" type="text" placeholder="e.g. Louis Vuitton Neverfull, Rolex Submariner, PlayStation 5…" autocomplete="off" />
+          <button id="goBtn">Analyze</button>
+        </div>
+        <div class="search-msg" id="searchMsg"></div>
+        <div class="suggest" id="suggest"><span class="s-lbl">In the database</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DE-BRAND STAGE -->
+  <section id="debrandSection" class="hidden" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="overline">03 — The Honest Question</span>
+        <h2>Is it the object — or the name?</h2>
+      </div>
+      <div class="stage"><div class="stage-inner" id="stage"></div></div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="resultsSection" class="hidden" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="overline">04 — The Verdict</span>
+        <h2>Where in the world is it cheapest?</h2>
+        <p class="prose">Each country's local price, converted to your currency at the listed rates, ranked low to high.</p>
+      </div>
+      <div id="results"></div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- LEARN -->
+  <section id="learn">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="overline">The Economics</span>
+        <h2>Why a bag isn't a bag everywhere</h2>
+        <p class="prose">Four ideas from the AP Macroeconomics open-economy unit, hiding inside that price tag.</p>
+      </div>
+      <div class="learn-grid">
+        <div class="learn">
+          <span class="num">I.</span>
+          <h4>Exchange rates</h4>
+          <p>A €1,650 bag costs more or fewer of your dollars, yen or won depending on the rate that day. When a currency <em>depreciates</em> — the yen weakening, say — goods priced in it suddenly look cheap to outside shoppers, and a wave of buyers follows.</p>
+          <div class="terms">Terms — <span>appreciation · depreciation · foreign exchange market</span></div>
+        </div>
+        <div class="learn">
+          <span class="num">II.</span>
+          <h4>The <em>law of one price</em></h4>
+          <p>Purchasing-power parity says identical goods should cost the same everywhere once you convert currencies. They don't — this tool measures the gap. It is, in effect, a luxury-goods version of <em>The Economist's</em> Big Mac Index.</p>
+          <div class="terms">Terms — <span>purchasing power parity · law of one price</span></div>
+        </div>
+        <div class="learn">
+          <span class="num">III.</span>
+          <h4>Taxes &amp; tariffs</h4>
+          <p>VAT is baked into European and Asian prices (8–22%); the United States adds sales tax only at the register. Import duties pile on when a product leaves its home region — which is why a French house is usually cheapest in France. Tourist VAT refunds, and Britain <em>scrapping</em> them in 2021, move the maths again.</p>
+          <div class="terms">Terms — <span>tariff · VAT · import duty · trade barrier</span></div>
+        </div>
+        <div class="learn">
+          <span class="num">IV.</span>
+          <h4>Shopping tourism</h4>
+          <p>When a currency is weak, foreigners fly in and shop — money flowing in for goods counts toward the trade balance, like an export, and feeds GDP. Japan's weak-yen luxury-shopping boom is the textbook live example.</p>
+          <div class="terms">Terms — <span>net exports · trade balance · GDP</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- FLOW -->
+  <section id="flow">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="overline">How It Works</span>
+        <h2>The journey, in six steps</h2>
+        <p class="prose">(Redraw this as a proper diagram for the presentation — the rubric asks for a user-flow visual.)</p>
+      </div>
+      <div class="flow">
+        <div class="f-step"><span class="f-txt">Open the site</span></div>
+        <div class="f-step"><span class="f-txt">Set your "shopping from" country<span class="f-sub">— so prices appear in your currency</span></span></div>
+        <div class="f-step"><span class="f-txt">Search a product by name</span></div>
+        <div class="f-step"><span class="f-txt">See it de-branded — "would you still buy it?"</span></div>
+        <div class="f-step"><span class="f-txt">Reveal the country-by-country price ranking, chart and table</span></div>
+        <div class="f-step"><span class="f-txt">Read the macroeconomic reasons behind the spread</span></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="mark">SHOULD YOU BUY IT HERE<span class="dot">.</span></span>
+    AP Macroeconomics · Independent Project 2026 · Built by directing an AI tool (see the project's Prompt Log). Prices are illustrative placeholders pending the builder's research.
+  </div>
+</footer>
+
+<script>
+/* =====================================================================
+   EDIT YOUR DATA HERE
+   ---------------------------------------------------------------------
+   RATES = value of 1 unit of that currency in US dollars (≈ May 2026).
+     e.g. EUR:1.087 -> EUR 1 = $1.087 ; JPY:0.006667 -> JPY 1 = $0.0067 ($1 = JPY 150).
+   ITEMS: prices are in EACH COUNTRY'S OWN currency. Estimates — replace with researched numbers.
+     img      = path to a photo; drop a file in images/ with this name. Falls back to a text frame if missing.
+     logoBox  = OPTIONAL {x,y,w,h} as % of the image (from the top-left): blurs ONLY that rectangle (the logo),
+                leaving the rest of the product visible. Omit it and the photo gets a light overall blur instead.
+                Eyeball the four numbers, then nudge them until the box sits over the logo.
+     aliases  = lower-case search terms that should match this item.
+   To ADD an item, copy a block, change the values, give it a unique id.
+   ===================================================================== */
+const RATES = { USD:1, EUR:1.087, GBP:1.265, CHF:1.135, JPY:0.006667, KRW:0.00074, CAD:0.732 };
+
+const CURRENCY_OF = {
+  "United States":"USD","France":"EUR","Italy":"EUR","United Kingdom":"GBP",
+  "Switzerland":"CHF","Japan":"JPY","South Korea":"KRW"
+};
+
+const COUNTRIES = {
+  "United States":{cc:"US", tax:"No national VAT — state sales tax (0–10%) is added at the register, so the sticker price reads low."},
+  "France":{cc:"FR", tax:"20% VAT included in the price. Non-EU visitors can reclaim roughly 12% (détaxe)."},
+  "Italy":{cc:"IT", tax:"22% VAT included. Non-EU visitors can reclaim roughly 13–15%."},
+  "United Kingdom":{cc:"GB", tax:"20% VAT included — tax-free shopping for tourists was abolished in 2021, so no refund."},
+  "Switzerland":{cc:"CH", tax:"Only about 8.1% VAT, among the lowest in Europe — part of why Swiss watches are cheap at home."},
+  "Japan":{cc:"JP", tax:"10% consumption tax, but visitors buy tax-free instantly in-store (passport required) — a driver of the weak-yen luxury boom."},
+  "South Korea":{cc:"KR", tax:"10% VAT; visitors get instant or airport refunds, and the duty-free scene is large."}
+};
+
+const ITEMS = [
+  { id:"lv-neverfull", name:"Louis Vuitton Neverfull MM", brand:"LOUIS VUITTON", category:"handbag", origin:"France",
+    img:"images/lv-neverfull.jpg", logoBox:{x:13,y:44,w:74,h:48}, aliases:["neverfull","louis vuitton","lv tote","lv bag","louisvuitton"],
+    genka:"a coated-canvas tote. Estimates put the materials-and-labour cost of a bag like this at roughly 10–25% of retail — the remainder is brand, marketing, store rent and margin.",
+    prices:{ "United States":2030, "France":1650, "Italy":1650, "United Kingdom":1580, "Switzerland":1750, "Japan":313500, "South Korea":2920000 } },
+
+  { id:"chanel-flap", name:"Chanel Classic Flap (Medium)", brand:"CHANEL", category:"handbag", origin:"France",
+    img:"images/chanel-flap.jpg", logoBox:{x:42,y:69,w:16,h:11}, aliases:["chanel","classic flap","chanel bag","chanel flap","11.12"],
+    genka:"Chanel has roughly tripled this bag's price since 2010 — far faster than general inflation. Reported production cost is a small fraction of retail.",
+    prices:{ "United States":10800, "France":9300, "Italy":9300, "United Kingdom":9030, "Switzerland":9700, "Japan":1727000, "South Korea":15400000 } },
+
+  { id:"gucci-marmont", name:"Gucci GG Marmont (Small)", brand:"GUCCI", category:"shoulder bag", origin:"Italy",
+    img:"images/gucci-marmont.jpg", logoBox:{x:41,y:49,w:25,h:19}, aliases:["gucci","marmont","gg marmont","gucci bag"],
+    genka:"leather, hardware and Italian labour are real costs — but the double-G plaque does most of the pricing work.",
+    prices:{ "United States":2350, "France":1980, "Italy":1980, "United Kingdom":1890, "Switzerland":2100, "Japan":360800, "South Korea":3290000 } },
+
+  { id:"cartier-love", name:"Cartier Love Bracelet (yellow gold, small)", brand:"CARTIER", category:"bracelet", origin:"France",
+    img:"images/cartier-love.jpg", aliases:["cartier","love bracelet","cartier love","cartier bracelet"],
+    genka:"real 18-karat gold is a genuine commodity cost here — but the screw motif and the Cartier name still carry a steep premium over the metal value.",
+    prices:{ "United States":7350, "France":7150, "Italy":7150, "United Kingdom":6650, "Switzerland":6900, "Japan":1185000, "South Korea":10500000 } },
+
+  { id:"rolex-sub", name:"Rolex Submariner Date", brand:"ROLEX", category:"watch", origin:"Switzerland",
+    img:"images/rolex-sub.jpg", aliases:["rolex","submariner","rolex submariner","sub","rolex sub","126610"],
+    genka:"a genuinely engineered object — but the list price is also propped up by scarcity and waitlists. Resale frequently exceeds retail, which is unusual.",
+    prices:{ "United States":10250, "France":9950, "Italy":9950, "United Kingdom":8400, "Switzerland":8500, "Japan":1592800, "South Korea":14200000 } },
+
+  { id:"moncler-maya", name:"Moncler Maya Down Jacket", brand:"MONCLER", category:"down jacket", origin:"Italy",
+    img:"images/moncler-maya.jpg", aliases:["moncler","maya","moncler maya","moncler jacket","puffer"],
+    genka:"down fill and a glossy shell cost real money — yet a generic equivalent puffer sells for a fraction; the arm badge does the rest.",
+    prices:{ "United States":2150, "France":1850, "Italy":1850, "United Kingdom":1670, "Switzerland":1990, "Japan":330000, "South Korea":2890000 } },
+
+  { id:"burberry-trench", name:"Burberry Kensington Trench", brand:"BURBERRY", category:"trench coat", origin:"United Kingdom",
+    img:"images/burberry-trench.jpg", aliases:["burberry","trench","burberry trench","kensington","trench coat"],
+    genka:"gabardine cotton and tailoring cost real money — but the check lining and the name do a great deal of the work in that price.",
+    prices:{ "United States":2490, "France":2150, "Italy":2150, "United Kingdom":1790, "Switzerland":2250, "Japan":393800, "South Korea":3490000 } },
+
+  { id:"iphone-16-pro", name:"Apple iPhone 16 Pro (256GB)", brand:"APPLE", category:"smartphone", origin:"United States",
+    img:"images/iphone-16-pro.jpg", aliases:["iphone","iphone 16","iphone 16 pro","apple","apple iphone"],
+    genka:"teardown estimates put the bill of materials around 35–45% of retail — high for a consumer good; brand, software and ecosystem carry the rest.",
+    prices:{ "United States":1099, "France":1329, "Italy":1339, "United Kingdom":1099, "Switzerland":1199, "Japan":179800, "South Korea":1550000 } },
+
+  { id:"macbook-air", name:"Apple MacBook Air 13\"", brand:"APPLE", category:"laptop", origin:"United States",
+    img:"images/macbook-air.jpg", aliases:["macbook","macbook air","apple laptop","mac air","laptop"],
+    genka:"a higher materials share than most consumer goods — but the design, the chip and the software ecosystem still command a clear premium.",
+    prices:{ "United States":999, "France":1199, "Italy":1209, "United Kingdom":999, "Switzerland":1099, "Japan":164800, "South Korea":1390000 } },
+
+  { id:"airpods-pro", name:"Apple AirPods Pro (2nd gen)", brand:"APPLE", category:"pair of earbuds", origin:"United States",
+    img:"images/airpods-pro.jpg", aliases:["airpods","airpods pro","apple earbuds","earbuds","air pods"],
+    genka:"teardown estimates put parts well under half of retail; the rest is the chip, the software handoff features and the brand.",
+    prices:{ "United States":249, "France":279, "Italy":279, "United Kingdom":229, "Switzerland":249, "Japan":39800, "South Korea":359000 } },
+
+  { id:"ps5", name:"Sony PlayStation 5 (Slim, disc)", brand:"PLAYSTATION", category:"games console", origin:"Japan",
+    img:"images/ps5.jpg", aliases:["ps5","playstation","playstation 5","sony ps5","console"],
+    genka:"consoles are often sold near or below build cost at launch — the money is in games and subscriptions. A neat contrast with luxury pricing.",
+    prices:{ "United States":499.99, "France":549.99, "Italy":549.99, "United Kingdom":479.99, "Switzerland":549.90, "Japan":66980, "South Korea":688400 } },
+
+  { id:"switch-oled", name:"Nintendo Switch (OLED model)", brand:"NINTENDO", category:"games console", origin:"Japan",
+    img:"images/switch-oled.jpg", aliases:["switch","nintendo","nintendo switch","switch oled","console"],
+    genka:"modest hardware with a healthy margin for a games company — but it's mass-market, so retail competition, not duty-free logic, sets the cheapest country.",
+    prices:{ "United States":349.99, "France":349.99, "Italy":349.99, "United Kingdom":309.99, "Switzerland":349, "Japan":37980, "South Korea":415000 } },
+
+  { id:"dyson-airwrap", name:"Dyson Airwrap Complete", brand:"DYSON", category:"hair styler", origin:"United Kingdom",
+    img:"images/dyson-airwrap.jpg", aliases:["dyson","airwrap","dyson airwrap","hair styler","hair tool"],
+    genka:"genuine motor and engineering cost — but Dyson prices well above functional rivals, leaning on design and brand. Notably cheaper in the UK/EU than the US.",
+    prices:{ "United States":599.99, "France":549.99, "Italy":549.99, "United Kingdom":479.99, "Switzerland":599, "Japan":84700, "South Korea":699000 } },
+
+  { id:"af1", name:"Nike Air Force 1 '07", brand:"NIKE", category:"pair of sneakers", origin:"United States",
+    img:"images/af1.jpg", aliases:["nike","air force 1","af1","air force","nike af1","airforce 1"],
+    genka:"often-cited estimates put manufacturing and materials well under a quarter of retail; marketing, athlete deals, logistics and retailer margin make up the bulk.",
+    prices:{ "United States":115, "France":119.99, "Italy":119.99, "United Kingdom":104.99, "Switzerland":119.90, "Japan":16500, "South Korea":139000 } },
+
+  { id:"lego-falcon", name:"LEGO Millennium Falcon (75192)", brand:"LEGO", category:"building set", origin:"Denmark",
+    img:"images/lego-falcon.jpg", aliases:["lego","millennium falcon","lego falcon","75192","star wars lego"],
+    genka:"7,541 pieces of ABS plastic plus a licensed Star Wars name. A useful contrast case — a mass-market good where the cheapest country is set by retail competition, not duty-free luxury logic.",
+    prices:{ "United States":849.99, "France":849.99, "Italy":849.99, "United Kingdom":734.99, "Switzerland":799.95, "Japan":132980, "South Korea":1159000 } }
+];
+
+/* =====================  app logic  ===================== */
+const $ = s => document.querySelector(s);
+let homeCountry = "United States";
+let current = null;     // selected item
+let revealed = false;
+const homeCur = () => CURRENCY_OF[homeCountry];
+
+function fmt(amount, cur){
+  try{ return new Intl.NumberFormat(undefined,{style:"currency",currency:cur,maximumFractionDigits:0}).format(amount); }
+  catch(e){ return cur+" "+Math.round(amount).toLocaleString(); }
+}
+function toHome(amount, fromCur){ return (amount * RATES[fromCur]) / RATES[homeCur()]; }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---- locale dropdown ---- */
+function buildHomeSelect(){
+  const sel = $("#home");
+  sel.innerHTML = Object.keys(COUNTRIES).map(c =>
+    `<option value="${c}" ${c===homeCountry?"selected":""}>${c} — ${CURRENCY_OF[c]}</option>`).join("");
+  sel.onchange = () => { homeCountry = sel.value; updateRateNote(); if(current) renderStage(); if(revealed) renderResults(); };
+  updateRateNote();
+}
+function updateRateNote(){
+  const c = homeCur(), usdPer = RATES[c];
+  $("#rateNote").textContent = c==="USD" ? "Prices shown in US dollars."
+    : `Rate used — 1 ${c} = $${usdPer.toLocaleString(undefined,{maximumFractionDigits:6})}  (so $1 = ${(1/usdPer).toLocaleString(undefined,{maximumFractionDigits:2})} ${c}).`;
+}
+
+/* ---- suggestions ---- */
+function renderSuggest(){
+  const box = $("#suggest");
+  box.innerHTML = `<span class="s-lbl">In the database</span>` +
+    ITEMS.map(it=>`<a href="#" data-id="${it.id}">${esc(it.name)}</a>`).join("");
+  box.querySelectorAll("a").forEach(a=>{ a.onclick = e => { e.preventDefault(); pick(a.dataset.id); }; });
+}
+
+/* ---- search ---- */
+function findItem(rawText){
+  const q = rawText.trim().toLowerCase();
+  if(!q) return {status:"empty"};
+  let hits = ITEMS.filter(it =>
+    it.name.toLowerCase().includes(q) || it.brand.toLowerCase().includes(q) ||
+    it.category.toLowerCase().includes(q) || it.aliases.some(a => a.includes(q) || q.includes(a)) );
+  if(hits.length===0){
+    const words = q.split(/\s+/);
+    hits = ITEMS.filter(it=>{
+      const blob = (it.name+" "+it.brand+" "+it.category+" "+it.aliases.join(" ")).toLowerCase();
+      return words.every(w=>blob.includes(w));
+    });
+  }
+  if(hits.length===1) return {status:"one", item:hits[0]};
+  if(hits.length>1) return {status:"many", items:hits};
+  return {status:"none"};
+}
+function listLinks(items){
+  return items.map(it=>`<a href="#" data-id="${it.id}">${esc(it.name)}</a>`).join(" · ");
+}
+function wireMsgLinks(){
+  $("#searchMsg").querySelectorAll("a").forEach(a=>a.onclick=e=>{e.preventDefault();$("#searchMsg").innerHTML="";pick(a.dataset.id);});
+}
+function doSearch(){
+  const res = findItem($("#q").value);
+  const msg = $("#searchMsg");
+  if(res.status==="empty"){ msg.textContent = "Type a product name first."; return; }
+  if(res.status==="one"){ msg.innerHTML=""; pick(res.item.id); return; }
+  if(res.status==="many"){ msg.innerHTML = "Did you mean — " + listLinks(res.items); wireMsgLinks(); return; }
+  msg.innerHTML = "Not in the database yet — tell the builder to add it. In stock now: " + listLinks(ITEMS);
+  wireMsgLinks();
+}
+
+/* ---- pick an item -> show de-brand stage ---- */
+function pick(id){
+  current = ITEMS.find(x=>x.id===id);
+  if(!current) return;
+  revealed = false;
+  $("#q").value = ""; $("#searchMsg").innerHTML = "";
+  $("#debrandSection").classList.remove("hidden");
+  $("#resultsSection").classList.add("hidden");
+  $("#stage").innerHTML = `<div class="loading"><em>Analysing global pricing<span class="dots"></span></em></div>`;
+  $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
+  setTimeout(renderStage, 850);
+}
+
+function objectVisual(it){
+  // With a photo: show it. logoBox -> blur ONLY that rectangle; no logoBox -> light overall blur.
+  // No photo (or the file 404s): fall back to the elegant text frame so nothing breaks.
+  const textFrame = `<div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">the object, without the label</div></div>`;
+  if(!it.img){ return `<div class="object-wrap">${textFrame}</div>`; }
+  const lb = it.logoBox;
+  const cover = lb ? `<div class="logo-cover ${revealed?"gone":""}" style="left:${lb.x}%;top:${lb.y}%;width:${lb.w}%;height:${lb.h}%"></div>` : "";
+  const imgCls = "obj-img" + (revealed?" revealed":"");
+  const cap = lb ? `<div class="obj-cap ${revealed?"revealed":""}">— logo concealed —</div>` : "";
+  const fallback = textFrame.replace(/"/g,"&quot;");
+  return `<div class="object-wrap">
+      <div class="img-holder">
+        <img class="${imgCls}" src="${esc(it.img)}" alt="${esc(it.category)}"
+          onerror="this.closest('.object-wrap').innerHTML='${fallback}'">
+        ${cover}
+      </div>
+      ${cap}
+    </div>`;
+}
+
+function renderStage(){
+  const it = current;
+  const homePrice = toHome(it.prices[homeCountry], CURRENCY_OF[homeCountry]);
+  $("#stage").innerHTML = `
+    ${objectVisual(it)}
+    <div class="brand-line ${revealed?"":"blurred"}">${esc(it.brand)}</div>
+    <div class="origin-line">a house based in ${esc(it.origin)}</div>
+    <div class="ask">Logo hidden — would you pay <span class="price-em">${fmt(homePrice, homeCur())}</span> for this ${esc(it.category)}, bought in ${esc(homeCountry)}?</div>
+    ${revealed ? "" : `<div class="choice-row">
+      <button class="lk-btn" id="yesBtn">Yes — I'd still buy it</button>
+      <button class="lk-btn sub" id="noBtn">No — not without the name</button>
+    </div>`}
+    <div id="quip"></div>`;
+  if(!revealed){
+    $("#yesBtn").onclick = () => reveal("yes");
+    $("#noBtn").onclick = () => {
+      $("#quip").innerHTML = `<div class="quip">That gap — between what you'd pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they're expensive are called <em>Veblen goods</em>. Either way, here's where it costs the least.</div>
+        <div class="choice-row"><button class="lk-btn" id="anyway">Show me the prices anyway</button></div>`;
+      $("#anyway").onclick = () => reveal("no");
+    };
+  }
+}
+
+function reveal(answer){
+  revealed = true; renderStage();
+  $("#quip").innerHTML = answer==="yes"
+    ? `<div class="quip">Fair — for many buyers the name <em>is</em> the product: status, signalling, resale value. So: where on earth do you get it for the least?</div>`
+    : `<div class="quip">Honest. And if you ever do cave — cave in the cheapest country.</div>`;
+  renderResults();
+  $("#resultsSection").classList.remove("hidden");
+  $("#resultsSection").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function renderResults(){
+  const it = current;
+  const rows = Object.keys(it.prices).map(country=>{
+    const localCur = CURRENCY_OF[country], local = it.prices[country];
+    return { country, cc:COUNTRIES[country].cc, localCur, local, home:toHome(local, localCur), isHome:country===homeCountry };
+  }).sort((a,b)=>a.home-b.home);
+
+  const max = Math.max(...rows.map(r=>r.home));
+  const cheapest = rows[0], dearest = rows[rows.length-1];
+  const youRow = rows.find(r=>r.isHome), youRank = youRow ? rows.indexOf(youRow)+1 : null;
+  const savePctVsYou = youRow ? ((youRow.home - cheapest.home)/youRow.home*100) : null;
+  const spreadPct = (dearest.home - cheapest.home)/dearest.home*100;
+  const originIsCheapest = cheapest.country===it.origin;
+  const originSold = Object.keys(it.prices).includes(it.origin);
+
+  let verdict = `<div class="verdict">
+    <div class="v-top">
+      <h3>Cheapest — <span class="cc">${esc(cheapest.country)}</span></h3>
+      <span class="v-price">${fmt(cheapest.home, homeCur())}</span>
+    </div>
+    <p>Most expensive is <strong>${esc(dearest.country)}</strong> at ${fmt(dearest.home, homeCur())} — a <strong>${spreadPct.toFixed(0)}%</strong> spread for one identical product.`;
+  if(youRow){
+    verdict += ` Bought at home in <strong>${esc(homeCountry)}</strong> you'd pay ${fmt(youRow.home, homeCur())}, rank ${youRank} of ${rows.length}. ${savePctVsYou>0.5?`Bringing it back from ${esc(cheapest.country)} would shave roughly <strong>${savePctVsYou.toFixed(0)}%</strong> off the sticker (before travel and any tourist refund).`:`You're already in the cheapest tier.`}`;
+  }
+  verdict += `</p><p>${ originSold ? (originIsCheapest
+      ? `It's cheapest in the brand's home country, ${esc(it.origin)} — the familiar "no import duty at the source."`
+      : `Note — it is <em>not</em> cheapest in the brand's home country (${esc(it.origin)}); here local taxes, retail competition or pricing strategy outweigh the origin advantage.`)
+      : `The brand's home country (${esc(it.origin)}) isn't among the markets compared here — a reminder that "buy it where it's made" only helps if you can actually shop there.` }</p></div>`;
+
+  const chart = `<div class="chart">${rows.map(r=>{
+    const pct = Math.max(4, r.home/max*100);
+    const cls = (r===cheapest?"cheapest":"") + (r.isHome?" home":"");
+    return `<div class="bar-row">
+      <div class="cy"><span class="cc">${r.cc}</span><span class="nm">${esc(r.country)}</span>${r.isHome?'<span class="you-tag">you</span>':''}</div>
+      <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="bar-val">${fmt(r.home, homeCur())}</div>
+    </div>`;
+  }).join("")}</div>`;
+
+  const table = `<div class="table-scroll"><table>
+    <thead><tr><th>#</th><th>Country</th><th>Local price</th><th>In ${homeCur()}</th><th>Tax / visitor note</th></tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr>
+      <td>${i+1}</td>
+      <td class="country"><span class="cc">${r.cc}</span>${esc(r.country)}
+        ${r.country===it.origin?'<span class="note-tag">home of the brand</span>':''}
+        ${r===cheapest?'<span class="note-tag">cheapest</span>':''}
+        ${r.isHome?'<span class="note-tag">your locale</span>':''}</td>
+      <td>${fmt(r.local, r.localCur)}</td>
+      <td class="num">${fmt(r.home, homeCur())}</td>
+      <td>${COUNTRIES[r.country].tax}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+
+  const genka = `<div class="genka"><strong>原価 — a reality check.</strong> This is ${esc(it.genka)} <em>(Qualitative for now; track down the real cost-structure reporting for the write-up.)</em></div>`;
+
+  $("#results").innerHTML = verdict + chart + table + genka;
+}
+
+/* ---- init ---- */
+buildHomeSelect();
+renderSuggest();
+$("#goBtn").onclick = doSearch;
+$("#q").addEventListener("keydown", e => { if(e.key==="Enter") doSearch(); });
+</script>
+</body>
+</html>
