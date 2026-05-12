@@ -247,7 +247,7 @@
       <div class="sec-head">
         <span class="overline">02 — The Product</span>
         <h2>Name the item</h2>
-        <p class="prose">Type a product and we'll look it up. A production version would have an AI research any product live; this prototype searches a curated, researched database — ask the builder to add anything missing.</p>
+        <p class="prose">Type a product and we'll look it up. If it's not in the curated database, AI will research it live — with real prices, an image, and the brand hidden.</p>
       </div>
       <div class="search-wrap">
         <div class="search-field">
@@ -460,6 +460,8 @@ const ITEMS = [
     prices:{ "United States":849.99, "France":849.99, "Italy":849.99, "United Kingdom":734.99, "Switzerland":799.95, "Japan":132980, "South Korea":1159000 } }
 ];
 
+const WORKER_URL = "https://ap-macro-lookup.bridge11korea.workers.dev";
+
 /* =====================  app logic  ===================== */
 const $ = s => document.querySelector(s);
 let homeCountry = "United States";
@@ -526,8 +528,38 @@ function doSearch(){
   if(res.status==="empty"){ msg.textContent = "Type a product name first."; return; }
   if(res.status==="one"){ msg.innerHTML=""; pick(res.item.id); return; }
   if(res.status==="many"){ msg.innerHTML = "Did you mean — " + listLinks(res.items); wireMsgLinks(); return; }
-  msg.innerHTML = "Not in the database yet — tell the builder to add it. In stock now: " + listLinks(ITEMS);
-  wireMsgLinks();
+  // Not in local database — ask the Worker to look it up live
+  const rawQ = $("#q").value.trim();
+  msg.innerHTML = `Searching globally for <em>${esc(rawQ)}</em> — this takes a few seconds...`;
+  fetchFromWorker(rawQ);
+}
+
+async function fetchFromWorker(query){
+  const msg = $("#searchMsg");
+  try {
+    const res = await fetch(`${WORKER_URL}/?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if(!data.found){
+      msg.innerHTML = `Could not find "<em>${esc(query)}</em>". Try a more specific name (e.g. "Prada Saffiano wallet"). In the database: ` + listLinks(ITEMS);
+      wireMsgLinks();
+      return;
+    }
+    // Build an ITEMS-compatible object from the Worker response
+    const id = "live-" + Date.now();
+    const it = {
+      id, name: data.name, brand: data.brand, category: data.category, origin: data.origin,
+      img: data.image_url || "", aliases: [],
+      genka: data.blurb || "production cost data not available for this item.",
+      prices: data.prices,
+      _live: true  // flag: came from the Worker, not local
+    };
+    ITEMS.push(it);
+    msg.innerHTML = "";
+    pick(id);
+  } catch(e) {
+    msg.innerHTML = `Network error — could not reach the lookup service. In the database: ` + listLinks(ITEMS);
+    wireMsgLinks();
+  }
 }
 
 /* ---- pick an item -> show de-brand stage ---- */
@@ -550,8 +582,10 @@ function objectVisual(it){
   if(!it.img){ return `<div class="object-wrap">${textFrame}</div>`; }
   const lb = it.logoBox;
   const cover = lb ? `<div class="logo-cover ${revealed?"gone":""}" style="left:${lb.x}%;top:${lb.y}%;width:${lb.w}%;height:${lb.h}%"></div>` : "";
-  const imgCls = "obj-img" + (revealed?" revealed":"");
-  const cap = lb ? `<div class="obj-cap ${revealed?"revealed":""}">— logo concealed —</div>` : "";
+  const softBlur = !lb && !revealed ? " soft" : "";
+  const imgCls = "obj-img" + (revealed?" revealed":"") + softBlur;
+  const cap = lb ? `<div class="obj-cap ${revealed?"revealed":""}">— logo concealed —</div>`
+    : (!revealed ? `<div class="obj-cap">— brand obscured —</div>` : "");
   const fallback = textFrame.replace(/"/g,"&quot;");
   return `<div class="object-wrap">
       <div class="img-holder">
