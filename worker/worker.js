@@ -8,11 +8,11 @@
 
 const COUNTRIES = ["United States","France","Italy","United Kingdom","Switzerland","Japan","South Korea"];
 const MODEL = "gemini-2.5-flash";
-const API_KEY_FALLBACK = "AIzaSyA_RxlBix7riczlYFCm5K9pnOd_lgvvzOs";
+const API_KEY_FALLBACK = ""; // set GEMINI_API_KEY as Cloudflare Worker secret
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
@@ -25,6 +25,11 @@ export default {
     // Image proxy endpoint
     if (url.pathname === "/img") {
       return handleImageProxy(url);
+    }
+
+    // Image debranding endpoint
+    if (url.pathname === "/debrand" && request.method === "POST") {
+      return handleDebrand(request, env);
     }
 
     // Product lookup endpoint
@@ -121,6 +126,65 @@ async function handleImageProxy(url) {
   } catch (e) {
     return new Response("Proxy error: " + e.message, { status: 502, headers: CORS });
   }
+}
+
+async function handleDebrand(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ success: false, error: "Invalid JSON body" }, 400);
+  }
+
+  const { image, mimeType } = body;
+  if (!image || typeof image !== "string") {
+    return json({ success: false, error: "Missing 'image' (base64 string)" }, 400);
+  }
+
+  const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
+  const prompt = "Detect and remove or cover any brand logos, monograms, and brand text in this product image naturally. Replace them with a clean, plausible surface texture that matches the surrounding material. Keep everything else identical.";
+
+  let geminiRes;
+  try {
+    geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType || "image/jpeg", data: image } },
+            ],
+          }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+        }),
+      }
+    );
+  } catch (e) {
+    return json({ success: false, error: "Could not reach Gemini: " + e.message }, 502);
+  }
+
+  if (!geminiRes.ok) {
+    const t = await geminiRes.text();
+    return json({ success: false, error: `Gemini API error ${geminiRes.status}`, detail: t.slice(0, 400) }, 502);
+  }
+
+  const data = await geminiRes.json();
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  const imgPart = parts.find(p => p.inlineData || p.inline_data);
+
+  if (!imgPart) {
+    return json({ success: false, error: "Gemini did not return an edited image" }, 200);
+  }
+
+  const img = imgPart.inlineData || imgPart.inline_data;
+  return json({
+    success: true,
+    image: img.data,
+    mimeType: img.mimeType || img.mime_type || "image/png",
+  }, 200);
 }
 
 function buildPrompt(q) {

@@ -83,6 +83,17 @@
   .search-msg{margin-top:18px;font-size:15px;color:var(--gold);min-height:1.4em;line-height:1.9}
   .search-msg a{border-bottom:1px solid var(--gold-soft)}
 
+  /* ---------- upload ---------- */
+  .upload-zone{max-width:680px;border:2px dashed var(--line);padding:48px 28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+  .upload-zone:hover,.upload-zone.dragover{border-color:var(--gold);background:rgba(138,109,51,.04)}
+  .upload-zone input[type=file]{display:none}
+  .upload-zone .uz-icon{font-size:36px;margin-bottom:12px;color:var(--ink-soft)}
+  .upload-zone .uz-text{font-family:var(--serif);font-size:clamp(18px,2.5vw,24px);color:var(--ink);font-style:italic}
+  .upload-zone .uz-sub{font-size:13px;color:var(--ink-soft);margin-top:8px}
+  .upload-preview{max-width:680px;margin-top:24px;text-align:center}
+  .upload-preview img{max-width:min(400px,90vw);max-height:50vh;border:1px solid var(--line)}
+  .upload-preview .up-actions{margin-top:20px;display:flex;gap:16px;justify-content:center}
+
   /* ---------- locale picker ---------- */
   .locale{display:flex;flex-wrap:wrap;gap:20px;align-items:center;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:24px 0;margin-top:32px}
   .locale label{font-size:11.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
@@ -198,7 +209,7 @@
   <div class="wrap">
     <span class="mark">SHOULD YOU BUY IT HERE<span class="dot">.</span></span>
     <nav>
-      <a href="#search">Search</a>
+      <a href="#search">Upload</a>
       <a href="#learn">The Economics</a>
       <a href="#flow">How It Works</a>
     </nav>
@@ -241,22 +252,28 @@
 
   <hr class="rule">
 
-  <!-- SEARCH -->
+  <!-- SEARCH / UPLOAD -->
   <section id="search">
     <div class="wrap">
       <div class="sec-head">
         <span class="overline">02 — The Product</span>
-        <h2>Name the item</h2>
-        <p class="prose">Name any branded product — AI will research it live, find an image, look up prices in seven countries, and hide the logo.</p>
+        <h2>Upload your product photo</h2>
+        <p class="prose">Upload a photo of any branded product — we'll detect the logo and erase it using AI, so you can judge the object on its own merit.</p>
       </div>
-      <div class="search-wrap">
-        <div class="search-field">
-          <input id="q" type="text" placeholder="e.g. Gucci belt, Prada bag, Rolex Submariner, iPhone 16 Pro…" autocomplete="off" />
-          <button id="goBtn">Analyze</button>
+      <div class="upload-zone" id="uploadZone">
+        <div class="uz-icon">↑</div>
+        <div class="uz-text">Drop an image here</div>
+        <div class="uz-sub">or click to browse · JPG, PNG, WebP</div>
+        <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp">
+      </div>
+      <div class="upload-preview hidden" id="uploadPreview">
+        <img id="previewImg" alt="Product preview">
+        <div class="up-actions">
+          <button class="lk-btn" id="debrandBtn">Remove Logo</button>
+          <button class="lk-btn sub" id="resetBtn">Choose different image</button>
         </div>
-        <div class="search-msg" id="searchMsg"></div>
-        <div class="suggest" id="suggest"><span class="s-lbl">In the database</span></div>
       </div>
+      <div class="search-msg" id="searchMsg"></div>
     </div>
   </section>
 
@@ -406,7 +423,7 @@ function buildHomeSelect(){
   const sel = $("#home");
   sel.innerHTML = Object.keys(COUNTRIES).map(c =>
     `<option value="${c}" ${c===homeCountry?"selected":""}>${c} — ${CURRENCY_OF[c]}</option>`).join("");
-  sel.onchange = () => { homeCountry = sel.value; updateRateNote(); if(current) renderStage(); if(revealed) renderResults(); };
+  sel.onchange = () => { homeCountry = sel.value; updateRateNote(); };
   updateRateNote();
 }
 function updateRateNote(){
@@ -415,187 +432,128 @@ function updateRateNote(){
     : `Rate used — 1 ${c} = $${usdPer.toLocaleString(undefined,{maximumFractionDigits:6})}  (so $1 = ${(1/usdPer).toLocaleString(undefined,{maximumFractionDigits:2})} ${c}).`;
 }
 
-/* ---- suggestions ---- */
-function renderSuggest(){
-  const box = $("#suggest");
-  const examples = ["Gucci belt","Prada bag","Rolex Submariner","Chanel Classic Flap","iPhone 16 Pro","Nike Air Force 1","Cartier Love Bracelet","Moncler jacket"];
-  box.innerHTML = `<span class="s-lbl">Try</span>` +
-    examples.map(s=>`<a href="#" data-q="${esc(s)}">${esc(s)}</a>`).join("");
-  box.querySelectorAll("a").forEach(a=>{ a.onclick = e => { e.preventDefault(); $("#q").value=a.dataset.q; doSearch(); }; });
+/* ---- image upload ---- */
+let uploadedImageData = null; // { base64, mimeType }
+
+function setupUpload(){
+  const zone = $("#uploadZone");
+  const input = $("#fileInput");
+
+  zone.onclick = () => input.click();
+
+  zone.ondragover = e => { e.preventDefault(); zone.classList.add("dragover"); };
+  zone.ondragleave = () => zone.classList.remove("dragover");
+  zone.ondrop = e => { e.preventDefault(); zone.classList.remove("dragover"); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+
+  input.onchange = () => { if(input.files[0]) handleFile(input.files[0]); };
+
+  $("#debrandBtn").onclick = doDebrand;
+  $("#resetBtn").onclick = resetUpload;
 }
 
-/* ---- search ---- */
-function doSearch(){
-  const rawQ = ($("#q").value || "").trim();
-  const msg = $("#searchMsg");
-  if(!rawQ){ msg.textContent = "Type a product name first."; return; }
-  msg.innerHTML = "";
+function handleFile(file){
+  if(!file.type.startsWith("image/")){ $("#searchMsg").textContent = "Please upload an image file."; return; }
+  if(file.size > 10*1024*1024){ $("#searchMsg").textContent = "Image too large (max 10 MB)."; return; }
+
+  const img = new Image();
+  img.onload = () => {
+    const MAX = 1024;
+    let w = img.width, h = img.height;
+    if(w > MAX || h > MAX){
+      if(w > h){ h = Math.round(h * MAX / w); w = MAX; }
+      else { w = Math.round(w * MAX / h); h = MAX; }
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    const base64 = dataUrl.split(",")[1];
+    uploadedImageData = { base64, mimeType: "image/jpeg" };
+
+    $("#previewImg").src = dataUrl;
+    $("#uploadZone").classList.add("hidden");
+    $("#uploadPreview").classList.remove("hidden");
+    $("#searchMsg").innerHTML = "";
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+function resetUpload(){
+  uploadedImageData = null;
+  $("#fileInput").value = "";
+  $("#uploadZone").classList.remove("hidden");
+  $("#uploadPreview").classList.add("hidden");
+  $("#searchMsg").innerHTML = "";
+  $("#debrandSection").classList.add("hidden");
+  $("#resultsSection").classList.add("hidden");
+}
+
+async function doDebrand(){
+  if(!uploadedImageData){ $("#searchMsg").textContent = "Upload an image first."; return; }
+
+  $("#searchMsg").innerHTML = "";
   $("#debrandSection").classList.remove("hidden");
   $("#resultsSection").classList.add("hidden");
-  $("#stage").innerHTML = `<div class="loading"><em>Researching "${esc(rawQ)}" across global markets<span class="dots"></span></em></div>`;
+  $("#stage").innerHTML = '<div class="loading"><em>AI is removing brand logos<span class="dots"></span></em></div>';
   $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
-  fetchFromWorker(rawQ);
-}
 
-async function fetchFromWorker(query){
-  const msg = $("#searchMsg");
   try {
-    const res = await fetch(`${WORKER_URL}/?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`${WORKER_URL}/debrand`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: uploadedImageData.base64, mimeType: uploadedImageData.mimeType })
+    });
     const data = await res.json();
-    if(!data.found){
+
+    if(!data.success){
+      $("#searchMsg").innerHTML = `Error: ${data.error || "Could not process image."}`;
       $("#debrandSection").classList.add("hidden");
-      msg.innerHTML = `Could not find "<em>${esc(query)}</em>". Try a more specific product name, e.g. "Gucci GG Marmont belt" or "Prada Saffiano wallet".`;
       return;
     }
-    const id = "live-" + Date.now();
-    const it = {
-      id, name: data.name, brand: data.brand, category: data.category, origin: data.origin,
-      img: data.image_url || "", aliases: [],
-      genka: data.blurb || "production cost data not available for this item.",
-      prices: data.prices
-    };
-    ITEMS.push(it);
-    current = it;
-    revealed = false;
-    $("#q").value = "";
-    msg.innerHTML = "";
-    renderStage();
+
+    // Show the debranded image
+    const debrandedSrc = `data:${data.mimeType};base64,${data.image}`;
+    renderDebrandedStage(debrandedSrc);
+
   } catch(e) {
+    $("#searchMsg").innerHTML = "Network error — could not reach the AI service. Please try again.";
     $("#debrandSection").classList.add("hidden");
-    msg.innerHTML = `Network error — could not reach the lookup service. Please try again.`;
   }
 }
 
-/* ---- pick an item -> show de-brand stage ---- */
-function pick(id){
-  current = ITEMS.find(x=>x.id===id);
-  if(!current) return;
-  revealed = false;
-  $("#q").value = ""; $("#searchMsg").innerHTML = "";
-  $("#debrandSection").classList.remove("hidden");
-  $("#resultsSection").classList.add("hidden");
-  $("#stage").innerHTML = `<div class="loading"><em>Analysing global pricing<span class="dots"></span></em></div>`;
-  $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
-  setTimeout(renderStage, 850);
-}
+function renderDebrandedStage(debrandedSrc){
+  const originalSrc = `data:${uploadedImageData.mimeType};base64,${uploadedImageData.base64}`;
 
-function objectVisual(it){
-  // With a photo: show it. logoBox -> blur ONLY that rectangle; no logoBox -> light overall blur.
-  // No photo (or the file 404s): fall back to the elegant text frame so nothing breaks.
-  const textFrame = `<div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">the object, without the label</div></div>`;
-  if(!it.img){ return `<div class="object-wrap">${textFrame}</div>`; }
-  const lb = it.logoBox;
-  const cover = lb ? `<div class="logo-cover ${revealed?"gone":""}" style="left:${lb.x}%;top:${lb.y}%;width:${lb.w}%;height:${lb.h}%"></div>` : "";
-  const softBlur = !lb && !revealed ? " soft" : "";
-  const imgCls = "obj-img" + (revealed?" revealed":"") + softBlur;
-  const cap = lb ? `<div class="obj-cap ${revealed?"revealed":""}">— logo concealed —</div>`
-    : (!revealed ? `<div class="obj-cap">— brand obscured —</div>` : "");
-  const fallback = textFrame.replace(/"/g,"&quot;");
-  return `<div class="object-wrap">
-      <div class="img-holder">
-        <img class="${imgCls}" src="${esc(it.img)}" alt="${esc(it.category)}"
-          onerror="this.closest('.object-wrap').innerHTML='${fallback}'">
-        ${cover}
-      </div>
-      ${cap}
-    </div>`;
-}
-
-function renderStage(){
-  const it = current;
-  const homePrice = toHome(it.prices[homeCountry], CURRENCY_OF[homeCountry]);
   $("#stage").innerHTML = `
-    ${objectVisual(it)}
-    <div class="brand-line ${revealed?"":"blurred"}">${esc(it.brand)}</div>
-    <div class="origin-line">a house based in ${esc(it.origin)}</div>
-    <div class="ask">Logo hidden — would you pay <span class="price-em">${fmt(homePrice, homeCur())}</span> for this ${esc(it.category)}, bought in ${esc(homeCountry)}?</div>
-    ${revealed ? "" : `<div class="choice-row">
-      <button class="lk-btn" id="yesBtn">Yes — I'd still buy it</button>
-      <button class="lk-btn sub" id="noBtn">No — not without the name</button>
-    </div>`}
-    <div id="quip"></div>`;
-  if(!revealed){
-    $("#yesBtn").onclick = () => reveal("yes");
-    $("#noBtn").onclick = () => {
-      $("#quip").innerHTML = `<div class="quip">That gap — between what you'd pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they're expensive are called <em>Veblen goods</em>. Either way, here's where it costs the least.</div>
-        <div class="choice-row"><button class="lk-btn" id="anyway">Show me the prices anyway</button></div>`;
-      $("#anyway").onclick = () => reveal("no");
-    };
-  }
-}
-
-function reveal(answer){
-  revealed = true; renderStage();
-  $("#quip").innerHTML = answer==="yes"
-    ? `<div class="quip">Fair — for many buyers the name <em>is</em> the product: status, signalling, resale value. So: where on earth do you get it for the least?</div>`
-    : `<div class="quip">Honest. And if you ever do cave — cave in the cheapest country.</div>`;
-  renderResults();
-  $("#resultsSection").classList.remove("hidden");
-  $("#resultsSection").scrollIntoView({behavior:"smooth",block:"start"});
-}
-
-function renderResults(){
-  const it = current;
-  const rows = Object.keys(it.prices).map(country=>{
-    const localCur = CURRENCY_OF[country], local = it.prices[country];
-    return { country, cc:COUNTRIES[country].cc, localCur, local, home:toHome(local, localCur), isHome:country===homeCountry };
-  }).sort((a,b)=>a.home-b.home);
-
-  const max = Math.max(...rows.map(r=>r.home));
-  const cheapest = rows[0], dearest = rows[rows.length-1];
-  const youRow = rows.find(r=>r.isHome), youRank = youRow ? rows.indexOf(youRow)+1 : null;
-  const savePctVsYou = youRow ? ((youRow.home - cheapest.home)/youRow.home*100) : null;
-  const spreadPct = (dearest.home - cheapest.home)/dearest.home*100;
-  const originIsCheapest = cheapest.country===it.origin;
-  const originSold = Object.keys(it.prices).includes(it.origin);
-
-  let verdict = `<div class="verdict">
-    <div class="v-top">
-      <h3>Cheapest — <span class="cc">${esc(cheapest.country)}</span></h3>
-      <span class="v-price">${fmt(cheapest.home, homeCur())}</span>
+    <div style="display:flex;gap:28px;justify-content:center;flex-wrap:wrap;align-items:flex-start">
+      <div style="text-align:center">
+        <div class="obj-cap">— original —</div>
+        <img class="obj-img" src="${originalSrc}" alt="Original product">
+      </div>
+      <div style="text-align:center">
+        <div class="obj-cap">— logo removed —</div>
+        <img class="obj-img" src="${debrandedSrc}" alt="De-branded product">
+      </div>
     </div>
-    <p>Most expensive is <strong>${esc(dearest.country)}</strong> at ${fmt(dearest.home, homeCur())} — a <strong>${spreadPct.toFixed(0)}%</strong> spread for one identical product.`;
-  if(youRow){
-    verdict += ` Bought at home in <strong>${esc(homeCountry)}</strong> you'd pay ${fmt(youRow.home, homeCur())}, rank ${youRank} of ${rows.length}. ${savePctVsYou>0.5?`Bringing it back from ${esc(cheapest.country)} would shave roughly <strong>${savePctVsYou.toFixed(0)}%</strong> off the sticker (before travel and any tourist refund).`:`You're already in the cheapest tier.`}`;
-  }
-  verdict += `</p><p>${ originSold ? (originIsCheapest
-      ? `It's cheapest in the brand's home country, ${esc(it.origin)} — the familiar "no import duty at the source."`
-      : `Note — it is <em>not</em> cheapest in the brand's home country (${esc(it.origin)}); here local taxes, retail competition or pricing strategy outweigh the origin advantage.`)
-      : `The brand's home country (${esc(it.origin)}) isn't among the markets compared here — a reminder that "buy it where it's made" only helps if you can actually shop there.` }</p></div>`;
+    <div class="ask" style="margin-top:28px">Without the logo — would you still want this?</div>
+    <div class="choice-row">
+      <button class="lk-btn" id="yesBtn">Yes — the object speaks for itself</button>
+      <button class="lk-btn sub" id="noBtn">No — the name is the point</button>
+    </div>
+    <div id="quip"></div>`;
 
-  const chart = `<div class="chart">${rows.map(r=>{
-    const pct = Math.max(4, r.home/max*100);
-    const cls = (r===cheapest?"cheapest":"") + (r.isHome?" home":"");
-    return `<div class="bar-row">
-      <div class="cy"><span class="cc">${r.cc}</span><span class="nm">${esc(r.country)}</span>${r.isHome?'<span class="you-tag">you</span>':''}</div>
-      <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
-      <div class="bar-val">${fmt(r.home, homeCur())}</div>
-    </div>`;
-  }).join("")}</div>`;
-
-  const table = `<div class="table-scroll"><table>
-    <thead><tr><th>#</th><th>Country</th><th>Local price</th><th>In ${homeCur()}</th><th>Tax / visitor note</th></tr></thead>
-    <tbody>${rows.map((r,i)=>`<tr>
-      <td>${i+1}</td>
-      <td class="country"><span class="cc">${r.cc}</span>${esc(r.country)}
-        ${r.country===it.origin?'<span class="note-tag">home of the brand</span>':''}
-        ${r===cheapest?'<span class="note-tag">cheapest</span>':''}
-        ${r.isHome?'<span class="note-tag">your locale</span>':''}</td>
-      <td>${fmt(r.local, r.localCur)}</td>
-      <td class="num">${fmt(r.home, homeCur())}</td>
-      <td>${COUNTRIES[r.country].tax}</td>
-    </tr>`).join("")}</tbody></table></div>`;
-
-  const genka = `<div class="genka"><strong>原価 — a reality check.</strong> This is ${esc(it.genka)} <em>(Qualitative for now; track down the real cost-structure reporting for the write-up.)</em></div>`;
-
-  $("#results").innerHTML = verdict + chart + table + genka;
+  $("#yesBtn").onclick = () => {
+    $("#quip").innerHTML = '<div class="quip">Fair — for many buyers the name <em>is</em> the product: status, signalling, resale value. The brand premium is what you pay above the cost of the <em>object itself</em>.</div>';
+  };
+  $("#noBtn").onclick = () => {
+    $("#quip").innerHTML = '<div class="quip">That gap — between what you\'d pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they\'re expensive are called <em>Veblen goods</em>.</div>';
+  };
 }
 
 /* ---- init ---- */
 buildHomeSelect();
-renderSuggest();
-$("#goBtn").onclick = doSearch;
-$("#q").addEventListener("keydown", e => { if(e.key==="Enter") doSearch(); });
+setupUpload();
 </script>
 </body>
 </html>
