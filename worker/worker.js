@@ -142,7 +142,14 @@ async function handleDebrand(request, env) {
   }
 
   const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
-  const prompt = "Detect and remove or cover any brand logos, monograms, and brand text in this product image naturally. Replace them with a clean, plausible surface texture that matches the surrounding material. Keep everything else identical.";
+  const prompt = [
+    "You are an image editor that removes brand identifiers from product photos.",
+    "",
+    "RULES:",
+    "1. Only remove visible brand logos, monograms, brand name text, and iconic brand patterns (e.g. LV monogram, Gucci stripe). Replace each removed area with the surrounding material's texture, color, and grain so it looks natural.",
+    "2. If you cannot find any logo or brand marking in the image, return the image COMPLETELY UNCHANGED. Do not modify it at all.",
+    "3. Do NOT alter anything else: keep the exact same colors, lighting, shadows, background, composition, resolution, and aspect ratio. The only difference should be the removed logos.",
+  ].join("\n");
 
   let geminiRes;
   try {
