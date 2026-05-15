@@ -217,13 +217,7 @@ function buildPrompt(q) {
     `  },`,
     `  "image_url": "a direct URL to a clean product photo (https, ending in .jpg/.png/.webp). Strongly prefer Wikimedia Commons or Wikipedia images. Otherwise use official brand website images or well-known retail sites."`,
     `}`,
-    `PRICE SOURCING — THIS IS CRITICAL:`,
-    `- You MUST get each price from the brand's own official website for that country/region. For example: louisvuitton.com, gucci.com, rolex.com, apple.com, nike.com, etc.`,
-    `- Search for the product on the brand's official site for each country (e.g. louisvuitton.com/us-en, louisvuitton.com/fr-fr, louisvuitton.com/jp-ja, etc.).`,
-    `- Use the price listed on the official site in that country's local currency. Do NOT convert from one currency to another.`,
-    `- If the brand does not have an official site for a specific country, or the product is not listed there, omit that country from the prices object entirely. Do NOT guess or estimate.`,
-    `- Never use resale sites, blogs, or third-party retailers as price sources.`,
-    `If you genuinely cannot identify the product, set "found": false and you may omit prices.`,
+    `Use realistic CURRENT retail prices in EACH country's OWN currency (not converted). If you genuinely cannot identify the product, set "found": false and you may omit prices.`,
   ].join("\n");
 }
 
