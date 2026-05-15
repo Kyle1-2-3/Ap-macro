@@ -257,20 +257,12 @@
     <div class="wrap">
       <div class="sec-head">
         <span class="overline">02 — The Product</span>
-        <h2>Name the product</h2>
-        <p class="prose">Type any branded product — bag, watch, sneakers, gadget — and the site looks it up live (Gemini + Google Search), de-brands it, and shows you where in the world it's cheapest. Or, further down, upload your own photo and let the AI erase the logo.</p>
-      </div>
-      <div class="search-wrap">
-        <div class="search-field">
-          <input id="q" type="text" placeholder="e.g. Louis Vuitton Neverfull, Rolex Submariner, Prada Brera…" autocomplete="off">
-          <button id="goBtn">Analyze</button>
-        </div>
-        <div class="search-msg" id="searchMsg"></div>
+        <h2>Upload &amp; identify</h2>
+        <p class="prose">Upload a photo of any branded product <em>and</em> tell us what it is. AI erases the logo from your photo while Gemini looks up real prices in every major market — then you see where it's cheapest.</p>
       </div>
 
-      <!-- Secondary entry point: upload + AI logo removal -->
-      <div style="max-width:680px;margin-top:54px;padding-top:32px;border-top:1px solid var(--line)">
-        <span class="overline" style="display:block;margin-bottom:14px">Or — upload a photo (AI logo removal)</span>
+      <div style="max-width:680px">
+        <span class="overline" style="display:block;margin-bottom:14px">A — your photo</span>
         <div class="upload-zone" id="uploadZone">
           <div class="uz-icon">↑</div>
           <div class="uz-text">Drop an image here</div>
@@ -280,10 +272,16 @@
         <div class="upload-preview hidden" id="uploadPreview">
           <img id="previewImg" alt="Product preview">
           <div class="up-actions">
-            <button class="lk-btn" id="debrandBtn">Remove logo with AI</button>
             <button class="lk-btn sub" id="resetBtn">Choose different image</button>
           </div>
         </div>
+
+        <span class="overline" style="display:block;margin:36px 0 14px">B — its name</span>
+        <div class="search-field">
+          <input id="q" type="text" placeholder="e.g. Louis Vuitton Neverfull, Rolex Submariner…" autocomplete="off">
+          <button id="goBtn">Analyze</button>
+        </div>
+        <div class="search-msg" id="searchMsg"></div>
       </div>
     </div>
   </section>
@@ -458,7 +456,6 @@ function setupUpload(){
 
   input.onchange = () => { if(input.files[0]) handleFile(input.files[0]); };
 
-  $("#debrandBtn").onclick = doDebrand;
   $("#resetBtn").onclick = resetUpload;
 }
 
@@ -562,43 +559,99 @@ function renderDebrandedStage(debrandedSrc){
   };
 }
 
-/* ---- live search via Cloudflare Worker ---- */
+/* ---- live search + AI logo removal (combined flow) ---- */
+function loadImage(url){
+  return new Promise((res,rej) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";  // needed so canvas can read it
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+
+// fetch the proxied image, downscale, base64-encode, send to /debrand
+async function debrandInBackground(imageUrl){
+  try {
+    const img = await loadImage(imageUrl);
+    const MAX = 1024;
+    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if(w > MAX || h > MAX){
+      if(w > h){ h = Math.round(h * MAX / w); w = MAX; }
+      else { w = Math.round(w * MAX / h); h = MAX; }
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    const base64 = dataUrl.split(",")[1];
+
+    const res = await fetch(`${WORKER_URL}/debrand`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: base64, mimeType: "image/jpeg" })
+    });
+    const d = await res.json();
+    return d.success ? `data:${d.mimeType};base64,${d.image}` : null;
+  } catch(e) {
+    console.warn("debrand failed:", e);
+    return null;
+  }
+}
+
 async function doSearch(){
   const q = $("#q").value.trim();
-  if(!q){ $("#searchMsg").textContent = "Type a product name first."; return; }
+
+  // Combined flow: require BOTH a photo AND a product name
+  if(!uploadedImageData && !q){ $("#searchMsg").textContent = "Upload a photo AND type the product name first."; return; }
+  if(!uploadedImageData){ $("#searchMsg").textContent = "Upload a photo of the product first."; return; }
+  if(!q){ $("#searchMsg").textContent = "Type the product name first."; return; }
 
   $("#searchMsg").innerHTML = "";
   $("#debrandSection").classList.remove("hidden");
   $("#resultsSection").classList.add("hidden");
-  $("#stage").innerHTML = '<div class="loading"><em>Analysing global pricing<span class="dots"></span></em></div>';
+  $("#stage").innerHTML = '<div class="loading"><em>Looking up global prices &amp; AI-erasing the logo<span class="dots"></span></em></div>';
   $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
   revealed = false;
 
-  try {
-    const res = await fetch(`${WORKER_URL}/?q=${encodeURIComponent(q)}`);
-    const data = await res.json();
+  // Fire both calls in PARALLEL — total wait = max(search, debrand) rather than the sum
+  const searchPromise = fetch(`${WORKER_URL}/?q=${encodeURIComponent(q)}`)
+    .then(r => r.json())
+    .catch(e => ({ found:false, error:"Network: "+e.message }));
+  const debrandPromise = fetch(`${WORKER_URL}/debrand`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: uploadedImageData.base64, mimeType: uploadedImageData.mimeType })
+  })
+    .then(r => r.json())
+    .catch(e => ({ success:false, error:"Network: "+e.message }));
 
-    if(!data.found){
-      $("#stage").innerHTML = `<div class="quip" style="max-width:560px;margin:40px auto;text-align:center">Couldn't find solid data for "${esc(q)}".${data.error?" "+esc(data.error)+".":""} Try a more specific name, or another product.</div>`;
-      $("#resultsSection").classList.add("hidden");
-      return;
-    }
+  const [data, debrandData] = await Promise.all([searchPromise, debrandPromise]);
 
-    current = {
-      id: "live-" + Date.now(),
-      name: data.name,
-      brand: data.brand,
-      category: data.category,
-      origin: data.origin,
-      img: data.image_url,
-      blurb: data.blurb,
-      prices: data.prices,
-      sources: data.sources || []
-    };
-    renderStage();
-  } catch(e){
-    $("#stage").innerHTML = `<div class="quip" style="max-width:560px;margin:40px auto;text-align:center">Network error — couldn't reach the lookup service. Try again.</div>`;
+  if(!data.found){
+    $("#stage").innerHTML = `<div class="quip" style="max-width:560px;margin:40px auto;text-align:center">Couldn't find solid pricing data for "${esc(q)}".${data.error?" "+esc(data.error)+".":""} Try a more specific product name.</div>`;
+    $("#resultsSection").classList.add("hidden");
+    return;
   }
+
+  const debrandedImg = debrandData.success ? `data:${debrandData.mimeType};base64,${debrandData.image}` : null;
+  const originalImg = `data:${uploadedImageData.mimeType};base64,${uploadedImageData.base64}`;
+
+  current = {
+    id: "live-" + Date.now(),
+    name: data.name,
+    brand: data.brand,
+    category: data.category,
+    origin: data.origin,
+    img: originalImg,            // user's uploaded photo
+    debrandedImg: debrandedImg,  // same photo with logo erased (null if AI failed)
+    debrandPending: false,
+    blurb: data.blurb,
+    prices: data.prices,
+    sources: data.sources || []
+  };
+  if(!debrandedImg && debrandData.error){ console.warn("AI debrand failed:", debrandData.error); }
+  renderStage();
 }
 
 function renderStage(){
@@ -606,15 +659,31 @@ function renderStage(){
   const it = current;
   const homePrice = (it.prices && typeof it.prices[homeCountry] === "number") ? toHome(it.prices[homeCountry], CURRENCY_OF[homeCountry]) : null;
   const priceText = homePrice ? fmt(homePrice, homeCur()) : "its sticker price";
-  const imgHtml = it.img
-    ? `<div class="object-wrap"><div class="img-holder"><img class="obj-img ${revealed?"revealed":"soft"}" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div><div class="obj-cap ${revealed?"revealed":""}">— logo blurred —</div></div>`
-    : `<div class="object-wrap"><div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">the object, without the label</div></div></div>`;
+
+  let imgHtml;
+  if(revealed){
+    // Side-by-side reveal: original (with logo) + AI-debranded (if it succeeded)
+    const original = it.img ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.img)}" alt="original" onerror="this.parentElement.style.display='none'"><div class="obj-cap" style="display:block">— original —</div></div>` : "";
+    const after = it.debrandedImg ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.debrandedImg)}" alt="logo removed"><div class="obj-cap" style="display:block">— AI removed the logo —</div></div>` : "";
+    imgHtml = `<div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px">${original}${after}</div>`;
+  } else if(it.debrandedImg){
+    // Pre-reveal, AI debrand done: show the cleaned image (no CSS blur needed)
+    imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img" src="${esc(it.debrandedImg)}" alt="${esc(it.category)}"></div><div class="obj-cap">— logo removed by AI —</div></div>`;
+  } else if(it.img){
+    // Pre-reveal, AI debrand still running or failed: original with soft CSS blur
+    const pendingNote = it.debrandPending
+      ? `<div class="obj-cap" style="color:var(--gold);margin-bottom:10px;text-transform:none;letter-spacing:.04em;font-style:italic"><em>AI is removing the logo…</em></div>`
+      : "";
+    imgHtml = `<div class="object-wrap">${pendingNote}<div class="img-holder"><img class="obj-img soft" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div><div class="obj-cap">— logo blurred —</div></div>`;
+  } else {
+    imgHtml = `<div class="object-wrap"><div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">the object, without the label</div></div></div>`;
+  }
 
   $("#stage").innerHTML = `
     ${imgHtml}
     <div class="brand-line ${revealed?"":"blurred"}">${esc(it.brand)}</div>
     <div class="origin-line">a ${esc(it.category)} from a house based in ${esc(it.origin)}</div>
-    <div class="ask">Logo hidden — would you pay <span class="price-em">${priceText}</span> for this ${esc(it.category)}${homePrice ? `, bought in ${esc(homeCountry)}`:""}?</div>
+    <div class="ask">${revealed?"":"Logo hidden — "}Would you pay <span class="price-em">${priceText}</span> for this ${esc(it.category)}${homePrice ? `, bought in ${esc(homeCountry)}`:""}?</div>
     ${revealed ? "" : `<div class="choice-row">
       <button class="lk-btn" id="yesBtn2">Yes — I'd still buy it</button>
       <button class="lk-btn sub" id="noBtn2">No — not without the name</button>
