@@ -82,6 +82,12 @@
   .suggest a:hover{color:var(--ink);border-color:var(--ink)}
   .search-msg{margin-top:18px;font-size:15px;color:var(--gold);min-height:1.4em;line-height:1.9}
   .search-msg a{border-bottom:1px solid var(--gold-soft)}
+  .examples{margin-top:18px;font-size:14px;color:var(--ink-soft);line-height:2}
+  .examples .ex-label{font-size:11.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-right:12px}
+  .examples a{font-size:14px;margin:0 6px;color:var(--ink-soft);border-bottom:1px solid var(--line);cursor:pointer}
+  .examples a:hover{color:var(--ink);border-color:var(--ink)}
+  .macro-callout{margin-top:20px;padding:16px 22px;background:rgba(138,109,51,.08);border-left:3px solid var(--gold);font-size:14.5px;color:var(--ink);line-height:1.6}
+  .macro-callout .label{display:block;font-size:11px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:6px}
 
   /* ---------- upload ---------- */
   .upload-zone{max-width:680px;border:2px dashed var(--line);padding:48px 28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
@@ -229,8 +235,8 @@
   <!-- DISCLAIMER -->
   <div class="wrap" style="padding-top:42px">
     <div class="disclaimer">
-      <span class="lbl">Prototype</span>
-      <span>Prices and exchange rates shown are <em>illustrative estimates (≈ May 2026)</em> entered while the database is built. Before final submission they'll be replaced with figures researched from brand websites in each region, reporting on luxury pricing, and central-bank exchange rates.</span>
+      <span class="lbl">Live</span>
+      <span>Prices are looked up in real time using <strong>Google Gemini 2.5 Flash with Google Search grounding</strong>. Accuracy depends on what's currently published online — treat each result as a directional snapshot, not a quote. Exchange rates are static (≈ May 2026).</span>
     </div>
   </div>
 
@@ -276,12 +282,19 @@
           </div>
         </div>
 
-        <span class="overline" style="display:block;margin:36px 0 14px">B — its name</span>
+        <span class="overline" style="display:block;margin:36px 0 14px">B — its name <span style="text-transform:none;letter-spacing:0;color:var(--ink-soft);font-weight:400">(image is optional — type alone works too)</span></span>
         <div class="search-field">
           <input id="q" type="text" placeholder="e.g. Louis Vuitton Neverfull, Rolex Submariner…" autocomplete="off">
           <button id="goBtn">Analyze</button>
         </div>
         <div class="search-msg" id="searchMsg"></div>
+        <div class="examples" id="examples">
+          <span class="ex-label">Try one of these</span>
+          <a href="#" data-q="Rolex Submariner Date">Rolex Submariner</a>
+          <a href="#" data-q="Louis Vuitton Neverfull MM">Louis Vuitton Neverfull</a>
+          <a href="#" data-q="Cartier Love Bracelet">Cartier Love Bracelet</a>
+          <a href="#" data-q="Prada Brera bag">Prada Brera</a>
+        </div>
       </div>
     </div>
   </section>
@@ -356,7 +369,6 @@
       <div class="sec-head">
         <span class="overline">How It Works</span>
         <h2>The journey, in six steps</h2>
-        <p class="prose">(Redraw this as a proper diagram for the presentation — the rubric asks for a user-flow visual.)</p>
       </div>
       <div class="flow">
         <div class="f-step"><span class="f-txt">Open the site</span></div>
@@ -603,40 +615,56 @@ async function debrandInBackground(imageUrl){
 async function doSearch(){
   const q = $("#q").value.trim();
 
-  // Combined flow: require BOTH a photo AND a product name
-  if(!uploadedImageData && !q){ $("#searchMsg").textContent = "Upload a photo AND type the product name first."; return; }
-  if(!uploadedImageData){ $("#searchMsg").textContent = "Upload a photo of the product first."; return; }
+  // Image is OPTIONAL — typing alone works. Product name is required.
   if(!q){ $("#searchMsg").textContent = "Type the product name first."; return; }
 
+  const hasImage = !!uploadedImageData;
   $("#searchMsg").innerHTML = "";
   $("#debrandSection").classList.remove("hidden");
   $("#resultsSection").classList.add("hidden");
-  $("#stage").innerHTML = '<div class="loading"><em>Looking up global prices &amp; AI-erasing the logo<span class="dots"></span></em></div>';
+
+  // P3: rotating loading messages so the 15-20s wait feels intentional, not stuck
+  const loadMsgs = hasImage
+    ? ["Searching prices across 8 markets", "AI is erasing the logo", "Comparing exchange rates", "Almost there"]
+    : ["Searching prices across 8 markets", "Asking Gemini what this is", "Comparing exchange rates", "Almost there"];
+  $("#stage").innerHTML = `<div class="loading"><em id="loadMsg">${loadMsgs[0]}</em><span class="dots"></span></div>`;
+  let msgIdx = 0;
+  const loadTimer = setInterval(() => {
+    msgIdx = (msgIdx + 1) % loadMsgs.length;
+    const el = document.getElementById("loadMsg");
+    if(el) el.textContent = loadMsgs[msgIdx];
+  }, 4500);
+
   $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
   revealed = false;
 
-  // Fire both calls in PARALLEL — total wait = max(search, debrand) rather than the sum
+  // Fire calls in parallel. Debrand only if user uploaded an image.
   const searchPromise = fetch(`${WORKER_URL}/?q=${encodeURIComponent(q)}`)
     .then(r => r.json())
     .catch(e => ({ found:false, error:"Network: "+e.message }));
-  const debrandPromise = fetch(`${WORKER_URL}/debrand`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: uploadedImageData.base64, mimeType: uploadedImageData.mimeType })
-  })
-    .then(r => r.json())
-    .catch(e => ({ success:false, error:"Network: "+e.message }));
+  const debrandPromise = hasImage
+    ? fetch(`${WORKER_URL}/debrand`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: uploadedImageData.base64, mimeType: uploadedImageData.mimeType })
+      }).then(r => r.json()).catch(e => ({ success:false, error:"Network: "+e.message }))
+    : Promise.resolve({ success:false });
 
   const [data, debrandData] = await Promise.all([searchPromise, debrandPromise]);
+  clearInterval(loadTimer);
 
   if(!data.found){
-    $("#stage").innerHTML = `<div class="quip" style="max-width:560px;margin:40px auto;text-align:center">Couldn't find solid pricing data for "${esc(q)}".${data.error?" "+esc(data.error)+".":""} Try a more specific product name.</div>`;
+    // P5: more actionable error message
+    const detail = data.error ? ` (${esc(data.error)})` : "";
+    $("#stage").innerHTML = `<div class="quip" style="max-width:580px;margin:40px auto;text-align:center;line-height:1.6">Couldn't pull pricing data for "<strong>${esc(q)}</strong>"${detail}. This usually means the name was too vague — try a more specific version like "Rolex Submariner Date 41mm" instead of just "Rolex", or try one of the suggested products above.</div>`;
     $("#resultsSection").classList.add("hidden");
     return;
   }
 
   const debrandedImg = debrandData.success ? `data:${debrandData.mimeType};base64,${debrandData.image}` : null;
-  const originalImg = `data:${uploadedImageData.mimeType};base64,${uploadedImageData.base64}`;
+  const userOriginal = hasImage ? `data:${uploadedImageData.mimeType};base64,${uploadedImageData.base64}` : null;
+  // If user uploaded, show their photo. Otherwise fall back to whatever Gemini returned.
+  const displayImg = userOriginal || data.image_url || "";
 
   current = {
     id: "live-" + Date.now(),
@@ -644,14 +672,15 @@ async function doSearch(){
     brand: data.brand,
     category: data.category,
     origin: data.origin,
-    img: originalImg,            // user's uploaded photo
-    debrandedImg: debrandedImg,  // same photo with logo erased (null if AI failed)
+    img: displayImg,                   // user's photo OR Gemini's image fallback
+    debrandedImg: debrandedImg,        // user's photo with logo erased (null if no upload or AI failed)
     debrandPending: false,
     blurb: data.blurb,
+    macro_insight: data.macro_insight || "",  // P4: macro takeaway from Gemini
     prices: data.prices,
     sources: data.sources || []
   };
-  if(!debrandedImg && debrandData.error){ console.warn("AI debrand failed:", debrandData.error); }
+  if(hasImage && !debrandedImg && debrandData.error){ console.warn("AI debrand failed:", debrandData.error); }
   renderStage();
 }
 
@@ -776,11 +805,16 @@ function renderResults(){
       <td>${(COUNTRIES[r.country]||{}).tax || ""}</td>
     </tr>`).join("")}</tbody></table></div>`;
 
+  // P4: macro takeaway callout — Gemini ties this specific result to a macro concept
+  const macroCallout = it.macro_insight
+    ? `<div class="macro-callout"><span class="label">📈 The macro</span>${esc(it.macro_insight)}</div>`
+    : "";
+
   const genka = it.blurb ? `<div class="genka"><strong>原価 — a reality check.</strong> ${esc(it.blurb)}</div>` : "";
 
   const sourcesHtml = (it.sources && it.sources.length) ? `<div style="margin-top:24px;font-size:12px;color:var(--ink-soft);line-height:1.8">Gemini used these sources: ${it.sources.slice(0,4).map(u=>{try{return `<a href="${esc(u)}" target="_blank" rel="noopener" style="font-size:12px;margin-right:10px">${esc(new URL(u).hostname)}</a>`;}catch(e){return "";}}).filter(Boolean).join("")}</div>` : "";
 
-  $("#results").innerHTML = verdict + chart + table + genka + sourcesHtml;
+  $("#results").innerHTML = verdict + macroCallout + chart + table + genka + sourcesHtml;
 }
 
 /* ---- init ---- */
@@ -788,6 +822,15 @@ buildHomeSelect();
 setupUpload();
 $("#goBtn").onclick = doSearch;
 $("#q").addEventListener("keydown", e => { if(e.key === "Enter") doSearch(); });
+
+// P2: wire up the "Try one of these" example chips — one-click demo flow
+document.querySelectorAll("#examples a").forEach(a => {
+  a.onclick = e => {
+    e.preventDefault();
+    $("#q").value = a.dataset.q || a.textContent;
+    doSearch();
+  };
+});
 </script>
 </body>
 </html>

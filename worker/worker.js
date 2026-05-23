@@ -89,6 +89,7 @@ export default {
       origin: str(parsed.origin) || "unknown",
       category: str(parsed.category) || "product",
       blurb: str(parsed.blurb) || "",
+      macro_insight: str(parsed.macro_insight) || "",
       image_url: proxyImg,
       prices,
       currencies: { "United States":"USD","Canada":"CAD","France":"EUR","Italy":"EUR","United Kingdom":"GBP","Switzerland":"CHF","Japan":"JPY","South Korea":"KRW" },
@@ -216,7 +217,8 @@ function buildPrompt(q) {
     `    "Japan": <number, in Japanese yen>,`,
     `    "South Korea": <number, in South Korean won>`,
     `  },`,
-    `  "image_url": "a direct URL to a clean product photo (https, ending in .jpg/.png/.webp). Strongly prefer Wikimedia Commons or Wikipedia images. Otherwise use official brand website images or well-known retail sites."`,
+    `  "image_url": "a direct URL to a clean product photo (https, ending in .jpg/.png/.webp). Strongly prefer Wikimedia Commons or Wikipedia images. Otherwise use official brand website images or well-known retail sites.",`,
+    `  "macro_insight": "ONE concise sentence (≤ 35 words) tying THIS specific result to ONE AP Macroeconomics concept — pick the most relevant from: exchange rates / currency depreciation, purchasing power parity / law of one price, tariffs & VAT / import duties, net exports / shopping tourism, or home-country origin advantage. Be specific about which country is cheapest and WHY (e.g. 'Switzerland is cheapest because its 8.1% VAT is the lowest in this set AND it's the brand's home country — origin advantage amplified by low tax.')."`,
     `}`,
     `Use realistic CURRENT retail prices in EACH country's OWN currency (not converted). If you genuinely cannot identify the product, set "found": false and you may omit prices.`,
   ].join("\n");
