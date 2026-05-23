@@ -6,7 +6,7 @@
      GET /img?url=<image url>  → Image proxy, bypasses hotlink protection
    ========================================================================== */
 
-const COUNTRIES = ["United States","France","Italy","United Kingdom","Switzerland","Japan","South Korea"];
+const COUNTRIES = ["United States","Canada","France","Italy","United Kingdom","Switzerland","Japan","South Korea"];
 const MODEL = "gemini-2.5-flash";
 const API_KEY_FALLBACK = ""; // set GEMINI_API_KEY as Cloudflare Worker secret
 
@@ -91,7 +91,7 @@ export default {
       blurb: str(parsed.blurb) || "",
       image_url: proxyImg,
       prices,
-      currencies: { "United States":"USD","France":"EUR","Italy":"EUR","United Kingdom":"GBP","Switzerland":"CHF","Japan":"JPY","South Korea":"KRW" },
+      currencies: { "United States":"USD","Canada":"CAD","France":"EUR","Italy":"EUR","United Kingdom":"GBP","Switzerland":"CHF","Japan":"JPY","South Korea":"KRW" },
       sources,
       model: MODEL,
     }, 200);
@@ -208,6 +208,7 @@ function buildPrompt(q) {
     `  "blurb": "one sentence: what it is, and roughly how its production cost compares to its retail price (qualitative is fine)",`,
     `  "prices": {`,
     `    "United States": <number, in US dollars>,`,
+    `    "Canada": <number, in Canadian dollars>,`,
     `    "France": <number, in euros>,`,
     `    "Italy": <number, in euros>,`,
     `    "United Kingdom": <number, in British pounds>,`,
