@@ -6,7 +6,7 @@
 <title>Should You Buy It Here — The Global Price of Brands</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600&family=Noto+Serif+JP:wght@400;500;600&family=Noto+Sans+JP:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#f7f4ee;          /* warm ivory   */
@@ -17,8 +17,8 @@
     --line-strong:#1f1c17; /* black rule   */
     --gold:#8a6d33;        /* antique gold */
     --gold-soft:#b59a5f;
-    --serif:"Playfair Display",Georgia,"Times New Roman",serif;
-    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --serif:"Playfair Display","Noto Serif JP",Georgia,"Times New Roman",serif;
+    --sans:"Inter","Noto Sans JP",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
@@ -40,11 +40,16 @@
   /* ---------- top bar ---------- */
   .topbar{border-bottom:1px solid var(--line)}
   .topbar .wrap{display:flex;justify-content:space-between;align-items:center;padding-top:20px;padding-bottom:20px}
+  .topbar .nav-group{display:flex;align-items:center}
   .mark{font-family:var(--serif);font-size:19px;font-weight:600;letter-spacing:.02em}
   .mark .dot{color:var(--gold)}
   .topbar nav a{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;border:none;margin-left:28px;color:var(--ink-soft)}
   .topbar nav a:hover{color:var(--ink)}
-  @media(max-width:640px){.topbar nav{display:none}}
+  .lang-toggle{font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:.1em;background:none;
+    border:1px solid var(--line);color:var(--ink-soft);padding:5px 12px;cursor:pointer;border-radius:2px;
+    margin-left:28px;transition:border-color .2s,color .2s;white-space:nowrap}
+  .lang-toggle:hover{color:var(--ink);border-color:var(--ink)}
+  @media(max-width:640px){.topbar nav{display:none}.lang-toggle{margin-left:0}}
 
   /* ---------- hero ---------- */
   .hero{padding:80px 0 66px;text-align:center;border-bottom:1px solid var(--line)}
@@ -214,19 +219,22 @@
 <div class="topbar">
   <div class="wrap">
     <span class="mark">SHOULD YOU BUY IT HERE<span class="dot">.</span></span>
-    <nav>
-      <a href="#search">Upload</a>
-      <a href="#learn">The Economics</a>
-      <a href="#flow">How It Works</a>
-    </nav>
+    <div class="nav-group">
+      <nav>
+        <a href="#search" data-i18n="navUpload">Upload</a>
+        <a href="#learn" data-i18n="navEconomics">The Economics</a>
+        <a href="#flow" data-i18n="navHow">How It Works</a>
+      </nav>
+      <button id="langToggle" class="lang-toggle" type="button">日本語</button>
+    </div>
   </div>
 </div>
 
 <header class="hero">
   <div class="wrap">
-    <span class="overline">AP Macroeconomics · Independent Project 2026</span>
-    <h1>The Same Object,<br>a <span class="it">Different</span> Price<br>at Every Border</h1>
-    <p class="lede">Name a branded product. Decide whether you'd still want it with the logo hidden — then see which country in the world sells it for the least, in your own currency, and why the price moves when you cross a frontier.</p>
+    <span class="overline" data-i18n="heroOverline">AP Macroeconomics · Independent Project 2026</span>
+    <h1 data-i18n="heroH1">The Same Object,<br>a <span class="it">Different</span> Price<br>at Every Border</h1>
+    <p class="lede" data-i18n="heroLede">Name a branded product. Decide whether you'd still want it with the logo hidden — then see which country in the world sells it for the least, in your own currency, and why the price moves when you cross a frontier.</p>
   </div>
 </header>
 
@@ -235,8 +243,8 @@
   <!-- DISCLAIMER -->
   <div class="wrap" style="padding-top:42px">
     <div class="disclaimer">
-      <span class="lbl">Live</span>
-      <span>Prices are looked up in real time using <strong>Google Gemini 2.5 Flash with Google Search grounding</strong>. Accuracy depends on what's currently published online — treat each result as a directional snapshot, not a quote. Exchange rates are static (≈ May 2026).</span>
+      <span class="lbl" data-i18n="discLbl">Live</span>
+      <span data-i18n="discText">Prices are looked up in real time using <strong>Google Gemini 2.5 Flash with Google Search grounding</strong>. Accuracy depends on what's currently published online — treat each result as a directional snapshot, not a quote. Exchange rates are static (≈ May 2026).</span>
     </div>
   </div>
 
@@ -244,12 +252,12 @@
   <section id="locale-sec">
     <div class="wrap">
       <div class="sec-head">
-        <span class="overline">01 — Locale</span>
-        <h2>Where are you shopping from?</h2>
-        <p class="prose">This sets the currency every price below is shown in — the money you actually carry.</p>
+        <span class="overline" data-i18n="locOverline">01 — Locale</span>
+        <h2 data-i18n="locH2">Where are you shopping from?</h2>
+        <p class="prose" data-i18n="locP">This sets the currency every price below is shown in — the money you actually carry.</p>
       </div>
       <div class="locale">
-        <label for="home">Shopping from</label>
+        <label for="home" data-i18n="locLabel">Shopping from</label>
         <select id="home"></select>
         <span id="rateNote" class="rate-note"></span>
       </div>
@@ -262,34 +270,34 @@
   <section id="search">
     <div class="wrap">
       <div class="sec-head">
-        <span class="overline">02 — The Product</span>
-        <h2>Upload &amp; identify</h2>
-        <p class="prose">Upload a photo of any branded product <em>and</em> tell us what it is. AI erases the logo from your photo while Gemini looks up real prices in every major market — then you see where it's cheapest.</p>
+        <span class="overline" data-i18n="prodOverline">02 — The Product</span>
+        <h2 data-i18n="prodH2">Upload &amp; identify</h2>
+        <p class="prose" data-i18n="prodP">Upload a photo of any branded product <em>and</em> tell us what it is. AI erases the logo from your photo while Gemini looks up real prices in every major market — then you see where it's cheapest.</p>
       </div>
 
       <div style="max-width:680px">
-        <span class="overline" style="display:block;margin-bottom:14px">A — your photo</span>
+        <span class="overline" data-i18n="uploadAOverline" style="display:block;margin-bottom:14px">A — your photo</span>
         <div class="upload-zone" id="uploadZone">
           <div class="uz-icon">↑</div>
-          <div class="uz-text">Drop an image here</div>
-          <div class="uz-sub">or click to browse · JPG, PNG, WebP</div>
+          <div class="uz-text" data-i18n="uzText">Drop an image here</div>
+          <div class="uz-sub" data-i18n="uzSub">or click to browse · JPG, PNG, WebP</div>
           <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp">
         </div>
         <div class="upload-preview hidden" id="uploadPreview">
           <img id="previewImg" alt="Product preview">
           <div class="up-actions">
-            <button class="lk-btn sub" id="resetBtn">Choose different image</button>
+            <button class="lk-btn sub" id="resetBtn" data-i18n="resetBtn">Choose different image</button>
           </div>
         </div>
 
-        <span class="overline" style="display:block;margin:36px 0 14px">B — its name <span style="text-transform:none;letter-spacing:0;color:var(--ink-soft);font-weight:400">(image is optional — type alone works too)</span></span>
+        <span class="overline" data-i18n="uploadBOverline" style="display:block;margin:36px 0 14px">B — its name <span style="text-transform:none;letter-spacing:0;color:var(--ink-soft);font-weight:400">(image is optional — type alone works too)</span></span>
         <div class="search-field">
-          <input id="q" type="text" placeholder="e.g. Louis Vuitton Neverfull, Rolex Submariner…" autocomplete="off">
-          <button id="goBtn">Analyze</button>
+          <input id="q" type="text" data-i18n-ph="qPh" placeholder="e.g. Louis Vuitton Neverfull, Rolex Submariner…" autocomplete="off">
+          <button id="goBtn" data-i18n="goBtn">Analyze</button>
         </div>
         <div class="search-msg" id="searchMsg"></div>
         <div class="examples" id="examples">
-          <span class="ex-label">Try one of these</span>
+          <span class="ex-label" data-i18n="exLabel">Try one of these</span>
           <a href="#" data-q="Rolex Submariner Date">Rolex Submariner</a>
           <a href="#" data-q="Louis Vuitton Neverfull MM">Louis Vuitton Neverfull</a>
           <a href="#" data-q="Cartier Love Bracelet">Cartier Love Bracelet</a>
@@ -303,8 +311,8 @@
   <section id="debrandSection" class="hidden" style="padding-top:0">
     <div class="wrap">
       <div class="sec-head">
-        <span class="overline">03 — The Honest Question</span>
-        <h2>Is it the object — or the name?</h2>
+        <span class="overline" data-i18n="honestOverline">03 — The Honest Question</span>
+        <h2 data-i18n="honestH2">Is it the object — or the name?</h2>
       </div>
       <div class="stage"><div class="stage-inner" id="stage"></div></div>
     </div>
@@ -314,9 +322,9 @@
   <section id="resultsSection" class="hidden" style="padding-top:0">
     <div class="wrap">
       <div class="sec-head">
-        <span class="overline">04 — The Verdict</span>
-        <h2>Where in the world is it cheapest?</h2>
-        <p class="prose">Each country's local price, converted to your currency at the listed rates, ranked low to high.</p>
+        <span class="overline" data-i18n="verdictOverline">04 — The Verdict</span>
+        <h2 data-i18n="verdictH2">Where in the world is it cheapest?</h2>
+        <p class="prose" data-i18n="verdictP">Each country's local price, converted to your currency at the listed rates, ranked low to high.</p>
       </div>
       <div id="results"></div>
     </div>
@@ -328,34 +336,34 @@
   <section id="learn">
     <div class="wrap">
       <div class="sec-head">
-        <span class="overline">The Economics</span>
-        <h2>Why a bag isn't a bag everywhere</h2>
-        <p class="prose">Four ideas from the AP Macroeconomics open-economy unit, hiding inside that price tag.</p>
+        <span class="overline" data-i18n="econOverline">The Economics</span>
+        <h2 data-i18n="econH2">Why a bag isn't a bag everywhere</h2>
+        <p class="prose" data-i18n="econP">Four ideas from the AP Macroeconomics open-economy unit, hiding inside that price tag.</p>
       </div>
       <div class="learn-grid">
         <div class="learn">
           <span class="num">I.</span>
-          <h4>Exchange rates</h4>
-          <p>A €1,650 bag costs more or fewer of your dollars, yen or won depending on the rate that day. When a currency <em>depreciates</em> — the yen weakening, say — goods priced in it suddenly look cheap to outside shoppers, and a wave of buyers follows.</p>
-          <div class="terms">Terms — <span>appreciation · depreciation · foreign exchange market</span></div>
+          <h4 data-i18n="card1H4">Exchange rates</h4>
+          <p data-i18n="card1P">A €1,650 bag costs more or fewer of your dollars, yen or won depending on the rate that day. When a currency <em>depreciates</em> — the yen weakening, say — goods priced in it suddenly look cheap to outside shoppers, and a wave of buyers follows.</p>
+          <div class="terms" data-i18n="card1Terms">Terms — <span>appreciation · depreciation · foreign exchange market</span></div>
         </div>
         <div class="learn">
           <span class="num">II.</span>
-          <h4>The <em>law of one price</em></h4>
-          <p>Purchasing-power parity says identical goods should cost the same everywhere once you convert currencies. They don't — this tool measures the gap. It is, in effect, a luxury-goods version of <em>The Economist's</em> Big Mac Index.</p>
-          <div class="terms">Terms — <span>purchasing power parity · law of one price</span></div>
+          <h4 data-i18n="card2H4">The <em>law of one price</em></h4>
+          <p data-i18n="card2P">Purchasing-power parity says identical goods should cost the same everywhere once you convert currencies. They don't — this tool measures the gap. It is, in effect, a luxury-goods version of <em>The Economist's</em> Big Mac Index.</p>
+          <div class="terms" data-i18n="card2Terms">Terms — <span>purchasing power parity · law of one price</span></div>
         </div>
         <div class="learn">
           <span class="num">III.</span>
-          <h4>Taxes &amp; tariffs</h4>
-          <p>VAT is baked into European and Asian prices (8–22%); the United States adds sales tax only at the register. Import duties pile on when a product leaves its home region — which is why a French house is usually cheapest in France. Tourist VAT refunds, and Britain <em>scrapping</em> them in 2021, move the maths again.</p>
-          <div class="terms">Terms — <span>tariff · VAT · import duty · trade barrier</span></div>
+          <h4 data-i18n="card3H4">Taxes &amp; tariffs</h4>
+          <p data-i18n="card3P">VAT is baked into European and Asian prices (8–22%); the United States adds sales tax only at the register. Import duties pile on when a product leaves its home region — which is why a French house is usually cheapest in France. Tourist VAT refunds, and Britain <em>scrapping</em> them in 2021, move the maths again.</p>
+          <div class="terms" data-i18n="card3Terms">Terms — <span>tariff · VAT · import duty · trade barrier</span></div>
         </div>
         <div class="learn">
           <span class="num">IV.</span>
-          <h4>Shopping tourism</h4>
-          <p>When a currency is weak, foreigners fly in and shop — money flowing in for goods counts toward the trade balance, like an export, and feeds GDP. Japan's weak-yen luxury-shopping boom is the textbook live example.</p>
-          <div class="terms">Terms — <span>net exports · trade balance · GDP</span></div>
+          <h4 data-i18n="card4H4">Shopping tourism</h4>
+          <p data-i18n="card4P">When a currency is weak, foreigners fly in and shop — money flowing in for goods counts toward the trade balance, like an export, and feeds GDP. Japan's weak-yen luxury-shopping boom is the textbook live example.</p>
+          <div class="terms" data-i18n="card4Terms">Terms — <span>net exports · trade balance · GDP</span></div>
         </div>
       </div>
     </div>
@@ -367,16 +375,16 @@
   <section id="flow">
     <div class="wrap">
       <div class="sec-head">
-        <span class="overline">How It Works</span>
-        <h2>The journey, in six steps</h2>
+        <span class="overline" data-i18n="howOverline">How It Works</span>
+        <h2 data-i18n="howH2">The journey, in six steps</h2>
       </div>
       <div class="flow">
-        <div class="f-step"><span class="f-txt">Open the site</span></div>
-        <div class="f-step"><span class="f-txt">Set your "shopping from" country<span class="f-sub">— so prices appear in your currency</span></span></div>
-        <div class="f-step"><span class="f-txt">Search a product by name</span></div>
-        <div class="f-step"><span class="f-txt">See it de-branded — "would you still buy it?"</span></div>
-        <div class="f-step"><span class="f-txt">Reveal the country-by-country price ranking, chart and table</span></div>
-        <div class="f-step"><span class="f-txt">Read the macroeconomic reasons behind the spread</span></div>
+        <div class="f-step"><span class="f-txt" data-i18n="step1">Open the site</span></div>
+        <div class="f-step"><span class="f-txt" data-i18n="step2">Set your "shopping from" country<span class="f-sub">— so prices appear in your currency</span></span></div>
+        <div class="f-step"><span class="f-txt" data-i18n="step3">Search a product by name</span></div>
+        <div class="f-step"><span class="f-txt" data-i18n="step4">See it de-branded — "would you still buy it?"</span></div>
+        <div class="f-step"><span class="f-txt" data-i18n="step5">Reveal the country-by-country price ranking, chart and table</span></div>
+        <div class="f-step"><span class="f-txt" data-i18n="step6">Read the macroeconomic reasons behind the spread</span></div>
       </div>
     </div>
   </section>
@@ -386,7 +394,7 @@
 <footer>
   <div class="wrap">
     <span class="mark">SHOULD YOU BUY IT HERE<span class="dot">.</span></span>
-    AP Macroeconomics · Independent Project 2026 · Built by directing an AI tool (see the project's Prompt Log). Prices are illustrative placeholders pending the builder's research.
+    <span data-i18n="footerText">AP Macroeconomics · Independent Project 2026 · Built by directing an AI tool (see the project's Prompt Log). Prices are illustrative placeholders pending the builder's research.</span>
   </div>
 </footer>
 
@@ -426,6 +434,218 @@ const ITEMS = [];
 
 const WORKER_URL = "https://ap-macro-lookup.bridge11korea.workers.dev";
 
+/* =====================  internationalisation (EN / JA)  ===================== */
+let lang = (localStorage.getItem("lang") === "ja") ? "ja" : "en";
+
+// Localised country names (data keys stay English everywhere internally).
+const NAME_JA = {
+  "United States":"アメリカ","Canada":"カナダ","France":"フランス","Italy":"イタリア",
+  "United Kingdom":"イギリス","Switzerland":"スイス","Japan":"日本","South Korea":"韓国"
+};
+// Localised tax / visitor notes for the table.
+const TAX_JA = {
+  "United States":"国としての付加価値税はなく、州の売上税（0〜10%）がレジで加算されるため、表示価格は安く見えます。",
+  "Canada":"5%の連邦GSTに加え、州ごとに異なる州税がかかります（BC州は7%のPSTで合計12%、オンタリオ州は13%のHST、アルバータ州はなし）。一般の旅行者向け還付はありません——カナダのGST訪問者還付は2007年に終了しました。",
+  "France":"20%のVATが価格に含まれます。EU圏外からの旅行者は約12%の還付（détaxe）を受けられます。",
+  "Italy":"22%のVATが含まれます。EU圏外からの旅行者は約13〜15%の還付を受けられます。",
+  "United Kingdom":"20%のVATが含まれます——旅行者向け免税ショッピングは2021年に廃止され、還付はありません。",
+  "Switzerland":"VATは約8.1%のみで、ヨーロッパでも最低水準——スイスの時計が現地で安い理由のひとつです。",
+  "Japan":"10%の消費税。ただし旅行者はパスポート提示で店頭ですぐ免税になります——円安による高級品ブームの一因です。",
+  "South Korea":"10%のVAT。旅行者は即時または空港で還付を受けられ、免税店も充実しています。"
+};
+
+// Static markup strings (set via [data-i18n]). HTML allowed — authored content, not user input.
+const STR = {
+  title:{en:"Should You Buy It Here — The Global Price of Brands", ja:"ここで買うべき？ — ブランド品の世界価格"},
+  navUpload:{en:"Upload", ja:"アップロード"},
+  navEconomics:{en:"The Economics", ja:"経済のしくみ"},
+  navHow:{en:"How It Works", ja:"使い方"},
+  heroOverline:{en:"AP Macroeconomics · Independent Project 2026", ja:"AP マクロ経済学 · 自主プロジェクト 2026"},
+  heroH1:{en:`The Same Object,<br>a <span class="it">Different</span> Price<br>at Every Border`, ja:`同じ商品なのに、<br>国境ごとに<br><span class="it">変わる</span>値段。`},
+  heroLede:{en:`Name a branded product. Decide whether you'd still want it with the logo hidden — then see which country in the world sells it for the least, in your own currency, and why the price moves when you cross a frontier.`, ja:`ブランド品の名前を入力してください。ロゴを隠してもまだ欲しいかを考えたうえで、世界のどの国がいちばん安く売っているかを、あなたの通貨で確かめましょう。そして、国境を越えると値段が動く理由も見てみましょう。`},
+  discLbl:{en:"Live", ja:"ライブ"},
+  discText:{en:`Prices are looked up in real time using <strong>Google Gemini 2.5 Flash with Google Search grounding</strong>. Accuracy depends on what's currently published online — treat each result as a directional snapshot, not a quote. Exchange rates are static (≈ May 2026).`, ja:`価格は <strong>Google Gemini 2.5 Flash（Google 検索グラウンディング付き）</strong> を使ってリアルタイムに調べています。精度はネット上で現在公開されている情報に左右されるため、各結果は正確な見積もりではなく、おおよその目安として捉えてください。為替レートは固定値です（2026年5月ごろ）。`},
+  locOverline:{en:"01 — Locale", ja:"01 — 地域"},
+  locH2:{en:"Where are you shopping from?", ja:"どこで買い物しますか？"},
+  locP:{en:"This sets the currency every price below is shown in — the money you actually carry.", ja:"下に表示されるすべての価格は、ここで選んだ国の通貨——あなたが実際に使うお金——で表示されます。"},
+  locLabel:{en:"Shopping from", ja:"買い物する国"},
+  prodOverline:{en:"02 — The Product", ja:"02 — 商品"},
+  prodH2:{en:"Upload &amp; identify", ja:"写真をのせて、調べる"},
+  prodP:{en:`Upload a photo of any branded product <em>and</em> tell us what it is. AI erases the logo from your photo while Gemini looks up real prices in every major market — then you see where it's cheapest.`, ja:`ブランド品の写真をアップロードし、<em>あわせて</em>商品名を教えてください。AI があなたの写真からロゴを消し、Gemini が主要な各市場の実際の価格を調べます——そして、どこがいちばん安いかがわかります。`},
+  uploadAOverline:{en:"A — your photo", ja:"A — あなたの写真"},
+  uzText:{en:"Drop an image here", ja:"ここに画像をドロップ"},
+  uzSub:{en:"or click to browse · JPG, PNG, WebP", ja:"またはクリックして選択 · JPG, PNG, WebP"},
+  resetBtn:{en:"Choose different image", ja:"別の画像を選ぶ"},
+  uploadBOverline:{en:`B — its name <span style="text-transform:none;letter-spacing:0;color:var(--ink-soft);font-weight:400">(image is optional — type alone works too)</span>`, ja:`B — 商品名 <span style="text-transform:none;letter-spacing:0;color:var(--ink-soft);font-weight:400">（画像は任意——入力だけでも使えます）</span>`},
+  qPh:{en:"e.g. Louis Vuitton Neverfull, Rolex Submariner…", ja:"例：ルイ・ヴィトン ネヴァーフル、ロレックス サブマリーナ…"},
+  goBtn:{en:"Analyze", ja:"分析する"},
+  exLabel:{en:"Try one of these", ja:"例から試す"},
+  honestOverline:{en:"03 — The Honest Question", ja:"03 — 正直な問い"},
+  honestH2:{en:"Is it the object — or the name?", ja:"モノそのもの？それとも名前？"},
+  verdictOverline:{en:"04 — The Verdict", ja:"04 — 結論"},
+  verdictH2:{en:"Where in the world is it cheapest?", ja:"世界でいちばん安いのはどこ？"},
+  verdictP:{en:"Each country's local price, converted to your currency at the listed rates, ranked low to high.", ja:"各国の現地価格を、記載のレートであなたの通貨に換算し、安い順に並べています。"},
+  econOverline:{en:"The Economics", ja:"経済のしくみ"},
+  econH2:{en:"Why a bag isn't a bag everywhere", ja:"なぜ同じバッグでも国で違うのか"},
+  econP:{en:"Four ideas from the AP Macroeconomics open-economy unit, hiding inside that price tag.", ja:"その値札の中に隠れている、AP マクロ経済学「開放経済」分野の4つの考え方。"},
+  card1H4:{en:"Exchange rates", ja:"為替レート"},
+  card1P:{en:`A €1,650 bag costs more or fewer of your dollars, yen or won depending on the rate that day. When a currency <em>depreciates</em> — the yen weakening, say — goods priced in it suddenly look cheap to outside shoppers, and a wave of buyers follows.`, ja:`1,650ユーロのバッグは、その日のレートしだいで、あなたのドル・円・ウォンに換算した値段が増えたり減ったりします。通貨が<em>減価</em>する——たとえば円安——と、その通貨建ての商品は外国の買い物客に急に安く見え、買い手が押し寄せます。`},
+  card1Terms:{en:`Terms — <span>appreciation · depreciation · foreign exchange market</span>`, ja:`用語 — <span>増価 · 減価 · 外国為替市場</span>`},
+  card2H4:{en:`The <em>law of one price</em>`, ja:`<em>一物一価の法則</em>`},
+  card2P:{en:`Purchasing-power parity says identical goods should cost the same everywhere once you convert currencies. They don't — this tool measures the gap. It is, in effect, a luxury-goods version of <em>The Economist's</em> Big Mac Index.`, ja:`購買力平価によれば、同じ商品は通貨を換算すればどこでも同じ値段になるはずです。実際にはそうなりません——このツールはその差を測ります。いわば<em>エコノミスト</em>誌のビッグマック指数の高級品版です。`},
+  card2Terms:{en:`Terms — <span>purchasing power parity · law of one price</span>`, ja:`用語 — <span>購買力平価 · 一物一価の法則</span>`},
+  card3H4:{en:"Taxes &amp; tariffs", ja:"税金と関税"},
+  card3P:{en:`VAT is baked into European and Asian prices (8–22%); the United States adds sales tax only at the register. Import duties pile on when a product leaves its home region — which is why a French house is usually cheapest in France. Tourist VAT refunds, and Britain <em>scrapping</em> them in 2021, move the maths again.`, ja:`ヨーロッパやアジアの価格には付加価値税（8〜22%）が含まれています。アメリカは売り場のレジでのみ売上税を加算します。商品が原産地域を離れると輸入関税が上乗せされ——だからフランスのブランドはたいていフランスでいちばん安いのです。旅行者向けの VAT 還付や、イギリスが2021年にそれを<em>廃止</em>したことも、計算をふたたび変えます。`},
+  card3Terms:{en:`Terms — <span>tariff · VAT · import duty · trade barrier</span>`, ja:`用語 — <span>関税 · 付加価値税 · 輸入関税 · 貿易障壁</span>`},
+  card4H4:{en:"Shopping tourism", ja:"買い物ツーリズム"},
+  card4P:{en:`When a currency is weak, foreigners fly in and shop — money flowing in for goods counts toward the trade balance, like an export, and feeds GDP. Japan's weak-yen luxury-shopping boom is the textbook live example.`, ja:`通貨が安いと、外国人が飛行機でやってきて買い物をします——商品の対価として流入するお金は輸出のように貿易収支に計上され、GDP を押し上げます。日本の円安による高級品の爆買いブームは、その教科書どおりの実例です。`},
+  card4Terms:{en:`Terms — <span>net exports · trade balance · GDP</span>`, ja:`用語 — <span>純輸出 · 貿易収支 · GDP</span>`},
+  howOverline:{en:"How It Works", ja:"使い方"},
+  howH2:{en:"The journey, in six steps", ja:"6ステップの流れ"},
+  step1:{en:"Open the site", ja:"サイトを開く"},
+  step2:{en:`Set your "shopping from" country<span class="f-sub">— so prices appear in your currency</span>`, ja:`「買い物する国」を設定する<span class="f-sub">——価格があなたの通貨で表示されます</span>`},
+  step3:{en:"Search a product by name", ja:"商品名で検索する"},
+  step4:{en:`See it de-branded — "would you still buy it?"`, ja:`ロゴを消した姿を見る——「それでも買う？」`},
+  step5:{en:"Reveal the country-by-country price ranking, chart and table", ja:"国ごとの価格ランキング・グラフ・表を表示する"},
+  step6:{en:"Read the macroeconomic reasons behind the spread", ja:"価格差の裏にあるマクロ経済の理由を読む"},
+  footerText:{en:"AP Macroeconomics · Independent Project 2026 · Built by directing an AI tool (see the project's Prompt Log). Prices are illustrative placeholders pending the builder's research.", ja:"AP マクロ経済学 · 自主プロジェクト 2026 · AI ツールを指示して制作（プロジェクトの Prompt Log を参照）。価格は制作者のリサーチが完了するまでの仮の参考値です。"}
+};
+
+// Dynamic strings used inside JS render functions. Values may be functions.
+const T = {
+  en:{
+    rateUSD:"Prices shown in US dollars.",
+    rateNote:(c,usd,inv)=>`Rate used — 1 ${c} = $${usd}  (so $1 = ${inv} ${c}).`,
+    errImageFile:"Please upload an image file.",
+    errImageLarge:"Image too large (max 10 MB).",
+    loadingDebrand:"AI is removing brand logos",
+    errPrefix:(m)=>`Error: ${m}`,
+    errCouldNotProcess:"Could not process image.",
+    errNetworkAI:"Network error — could not reach the AI service. Please try again.",
+    capOriginal:"— original —",
+    capLogoRemoved:"— logo removed —",
+    capAIremoved:"— AI removed the logo —",
+    capLogoByAI:"— logo removed by AI —",
+    capLogoBlurred:"— logo blurred —",
+    aiRemoving:"AI is removing the logo…",
+    objWithoutLabel:"the object, without the label",
+    askWithoutLogo:"Without the logo — would you still want this?",
+    btnYesObject:"Yes — the object speaks for itself",
+    btnNoName:"No — the name is the point",
+    quipDebYes:`Fair — for many buyers the name <em>is</em> the product: status, signalling, resale value. The brand premium is what you pay above the cost of the <em>object itself</em>.`,
+    quipDebNo:`That gap — between what you'd pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they're expensive are called <em>Veblen goods</em>.`,
+    errTypeName:"Type the product name first.",
+    errUploadFirst:"Upload an image first.",
+    loadImg:["Searching prices across 8 markets","AI is erasing the logo","Comparing exchange rates","Almost there"],
+    loadNoImg:["Searching prices across 8 markets","Asking Gemini what this is","Comparing exchange rates","Almost there"],
+    notFound:(q,detail)=>`Couldn't pull pricing data for "<strong>${q}</strong>"${detail}. This usually means the name was too vague — try a more specific version like "Rolex Submariner Date 41mm" instead of just "Rolex", or try one of the suggested products above.`,
+    stickerPrice:"its sticker price",
+    originLine:(cat,origin)=>`a ${cat} from a house based in ${origin}`,
+    askLine:(rev,price,cat,home)=>`${rev?"":"Logo hidden — "}Would you pay <span class="price-em">${price}</span> for this ${cat}${home?`, bought in ${home}`:""}?`,
+    btnYesBuy:"Yes — I'd still buy it",
+    btnNoNotWithout:"No — not without the name",
+    quipStageNo:`That gap — between what you'd pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they're expensive are called <em>Veblen goods</em>. Either way, here's where it costs the least.`,
+    btnShowAnyway:"Show me the prices anyway",
+    revealYes:`Fair — for many buyers the name <em>is</em> the product: status, signalling, resale value. So: where on earth do you get it for the least?`,
+    revealNo:`Honest. And if you ever do cave — cave in the cheapest country.`,
+    noPrices:"No country prices were returned for this product. Try a more specific product name.",
+    cheapestLabel:"Cheapest",
+    mostExpensive:(country,price,spread)=>`Most expensive is <strong>${country}</strong> at ${price} — a <strong>${spread}%</strong> spread for one identical product.`,
+    boughtHome:(home,price,rank,total)=>`Bought at home in <strong>${home}</strong> you'd pay ${price}, rank ${rank} of ${total}.`,
+    saveBringBack:(cheapest,pct)=>`Bringing it back from ${cheapest} would shave roughly <strong>${pct}%</strong> off the sticker (before travel and any tourist refund).`,
+    alreadyCheapest:"You're already in the cheapest tier.",
+    switchCountry:`Switch your "shopping from" country at the top to see what you'd pay locally.`,
+    originCheapest:(origin)=>`It's cheapest in the brand's home country, ${origin} — the familiar "no import duty at the source."`,
+    originNotCheapest:(origin)=>`Note — it is <em>not</em> cheapest in the brand's home country (${origin}); here local taxes, retail competition or pricing strategy outweigh the origin advantage.`,
+    originNotCompared:(origin)=>`The brand's home country (${origin}) isn't among the markets compared here.`,
+    thCountry:"Country", thLocal:"Local price", thInCur:(cur)=>`In ${cur}`, thTax:"Tax / visitor note",
+    tagHome:"home of the brand", tagCheapest:"cheapest", tagYou:"your locale", youTag:"you",
+    macroLabel:"📈 The macro",
+    genka:"Reality check.",
+    sources:"Gemini used these sources:"
+  },
+  ja:{
+    rateUSD:"価格は米ドルで表示しています。",
+    rateNote:(c,usd,inv)=>`適用レート — 1 ${c} = $${usd}（つまり $1 = ${inv} ${c}）。`,
+    errImageFile:"画像ファイルをアップロードしてください。",
+    errImageLarge:"画像が大きすぎます（最大10MB）。",
+    loadingDebrand:"AI がブランドロゴを消しています",
+    errPrefix:(m)=>`エラー：${m}`,
+    errCouldNotProcess:"画像を処理できませんでした。",
+    errNetworkAI:"通信エラー——AI サービスに接続できませんでした。もう一度お試しください。",
+    capOriginal:"— オリジナル —",
+    capLogoRemoved:"— ロゴを削除 —",
+    capAIremoved:"— AI がロゴを削除 —",
+    capLogoByAI:"— AI がロゴを削除しました —",
+    capLogoBlurred:"— ロゴをぼかしています —",
+    aiRemoving:"AI がロゴを消しています…",
+    objWithoutLabel:"ラベルのない、モノそのもの",
+    askWithoutLogo:"ロゴがなくても——それでも欲しいですか？",
+    btnYesObject:"はい——モノ自体に価値がある",
+    btnNoName:"いいえ——名前こそが重要",
+    quipDebYes:`なるほど——多くの買い手にとって、名前こそが<em>商品そのもの</em>です。ステータス、シグナリング、リセールバリュー。ブランドプレミアムとは、<em>モノ自体</em>の原価を超えて支払う分のことです。`,
+    quipDebNo:`あなたが<em>モノ</em>に払ってもよい額と、ブランドが請求する額との差——それがブランドプレミアムです。高いから<em>こそ</em>買われる商品は<em>ヴェブレン財</em>と呼ばれます。`,
+    errTypeName:"先に商品名を入力してください。",
+    errUploadFirst:"先に画像をアップロードしてください。",
+    loadImg:["8つの市場で価格を検索中","AI がロゴを消しています","為替レートを比較中","もうすぐです"],
+    loadNoImg:["8つの市場で価格を検索中","これが何かを Gemini に確認中","為替レートを比較中","もうすぐです"],
+    notFound:(q,detail)=>`「<strong>${q}</strong>」の価格データを取得できませんでした${detail}。名前があいまいすぎる場合によく起こります——「Rolex」だけでなく「Rolex Submariner Date 41mm」のように、より具体的に入力するか、上の候補からお試しください。`,
+    stickerPrice:"その定価",
+    originLine:(cat,origin)=>`${origin}に拠点を置くブランドの${cat}`,
+    askLine:(rev,price,cat,home)=>`${rev?"":"ロゴを隠した状態で——"}この${cat}に<span class="price-em">${price}</span>を払いますか${home?`（${home}で購入）`:""}？`,
+    btnYesBuy:"はい——それでも買う",
+    btnNoNotWithout:"いいえ——名前がなければ買わない",
+    quipStageNo:`あなたが<em>モノ</em>に払ってもよい額と、ブランドが請求する額との差——それがブランドプレミアムです。高いから<em>こそ</em>買われる商品は<em>ヴェブレン財</em>と呼ばれます。いずれにせよ、いちばん安いのはどこか見てみましょう。`,
+    btnShowAnyway:"それでも価格を見せて",
+    revealYes:`なるほど——多くの買い手にとって、名前こそが<em>商品</em>です。ステータス、シグナリング、リセールバリュー。では、世界のどこでいちばん安く手に入るでしょう？`,
+    revealNo:`正直ですね。もしいつか誘惑に負けるなら——いちばん安い国で負けましょう。`,
+    noPrices:"この商品の国別価格は取得できませんでした。より具体的な商品名でお試しください。",
+    cheapestLabel:"最安",
+    mostExpensive:(country,price,spread)=>`最も高いのは <strong>${country}</strong> で ${price}——同じ商品ひとつで <strong>${spread}%</strong> もの開きがあります。`,
+    boughtHome:(home,price,rank,total)=>`自国の <strong>${home}</strong> で買うと ${price}、${total}か国中${rank}位です。`,
+    saveBringBack:(cheapest,pct)=>`${cheapest}から持ち帰れば、定価より約 <strong>${pct}%</strong> 安くなります（旅費や旅行者還付を考慮する前）。`,
+    alreadyCheapest:"あなたはすでに最安グループにいます。",
+    switchCountry:`上の「買い物する国」を切り替えると、現地でいくら払うかがわかります。`,
+    originCheapest:(origin)=>`ブランドの母国である${origin}がいちばん安い——おなじみの「原産地では輸入関税なし」です。`,
+    originNotCheapest:(origin)=>`注目——ブランドの母国（${origin}）が最安では<em>ありません</em>。ここでは現地の税金・小売競争・価格戦略が、原産地の優位を上回っています。`,
+    originNotCompared:(origin)=>`ブランドの母国（${origin}）は、ここで比較した市場には含まれていません。`,
+    thCountry:"国", thLocal:"現地価格", thInCur:(cur)=>`${cur}換算`, thTax:"税・旅行者メモ",
+    tagHome:"ブランドの母国", tagCheapest:"最安", tagYou:"あなたの地域", youTag:"あなた",
+    macroLabel:"📈 マクロの視点",
+    genka:"現実を見ると。",
+    sources:"Gemini が参照したソース："
+  }
+};
+
+function t(k, ...a){
+  const o = T[lang] || T.en;
+  let v = (o[k] !== undefined) ? o[k] : T.en[k];
+  return (typeof v === "function") ? v(...a) : v;
+}
+function cname(c){ return (lang === "ja" && NAME_JA[c]) ? NAME_JA[c] : c; }
+function taxOf(c){ if(lang === "ja" && TAX_JA[c]) return TAX_JA[c]; return (COUNTRIES[c] || {}).tax || ""; }
+
+function applyLang(){
+  document.documentElement.lang = lang;
+  document.title = STR.title[lang];
+  document.querySelectorAll("[data-i18n]").forEach(el=>{
+    const k = el.getAttribute("data-i18n");
+    if(STR[k] && STR[k][lang] !== undefined) el.innerHTML = STR[k][lang];
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el=>{
+    const k = el.getAttribute("data-i18n-ph");
+    if(STR[k] && STR[k][lang] !== undefined) el.setAttribute("placeholder", STR[k][lang]);
+  });
+  const tg = $("#langToggle"); if(tg) tg.textContent = (lang === "ja") ? "EN" : "日本語";
+  buildHomeSelect();                       // country labels depend on language
+  if(current){ renderStage(); if(revealed) renderResults(); }
+}
+function setLang(l){
+  lang = (l === "ja") ? "ja" : "en";
+  localStorage.setItem("lang", lang);
+  applyLang();
+}
+
 /* =====================  app logic  ===================== */
 const $ = s => document.querySelector(s);
 let homeCountry = "United States";
@@ -444,14 +664,14 @@ function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;"
 function buildHomeSelect(){
   const sel = $("#home");
   sel.innerHTML = Object.keys(COUNTRIES).map(c =>
-    `<option value="${c}" ${c===homeCountry?"selected":""}>${c} — ${CURRENCY_OF[c]}</option>`).join("");
+    `<option value="${c}" ${c===homeCountry?"selected":""}>${esc(cname(c))} — ${CURRENCY_OF[c]}</option>`).join("");
   sel.onchange = () => { homeCountry = sel.value; updateRateNote(); if(current && !revealed) renderStage(); if(current && revealed) renderResults(); };
   updateRateNote();
 }
 function updateRateNote(){
   const c = homeCur(), usdPer = RATES[c];
-  $("#rateNote").textContent = c==="USD" ? "Prices shown in US dollars."
-    : `Rate used — 1 ${c} = $${usdPer.toLocaleString(undefined,{maximumFractionDigits:6})}  (so $1 = ${(1/usdPer).toLocaleString(undefined,{maximumFractionDigits:2})} ${c}).`;
+  $("#rateNote").textContent = c==="USD" ? t('rateUSD')
+    : t('rateNote', c, usdPer.toLocaleString(undefined,{maximumFractionDigits:6}), (1/usdPer).toLocaleString(undefined,{maximumFractionDigits:2}));
 }
 
 /* ---- image upload ---- */
@@ -473,8 +693,8 @@ function setupUpload(){
 }
 
 function handleFile(file){
-  if(!file.type.startsWith("image/")){ $("#searchMsg").textContent = "Please upload an image file."; return; }
-  if(file.size > 10*1024*1024){ $("#searchMsg").textContent = "Image too large (max 10 MB)."; return; }
+  if(!file.type.startsWith("image/")){ $("#searchMsg").textContent = t('errImageFile'); return; }
+  if(file.size > 10*1024*1024){ $("#searchMsg").textContent = t('errImageLarge'); return; }
 
   const img = new Image();
   img.onload = () => {
@@ -511,12 +731,12 @@ function resetUpload(){
 }
 
 async function doDebrand(){
-  if(!uploadedImageData){ $("#searchMsg").textContent = "Upload an image first."; return; }
+  if(!uploadedImageData){ $("#searchMsg").textContent = t('errUploadFirst'); return; }
 
   $("#searchMsg").innerHTML = "";
   $("#debrandSection").classList.remove("hidden");
   $("#resultsSection").classList.add("hidden");
-  $("#stage").innerHTML = '<div class="loading"><em>AI is removing brand logos<span class="dots"></span></em></div>';
+  $("#stage").innerHTML = `<div class="loading"><em>${t('loadingDebrand')}<span class="dots"></span></em></div>`;
   $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
 
   try {
@@ -528,7 +748,7 @@ async function doDebrand(){
     const data = await res.json();
 
     if(!data.success){
-      $("#searchMsg").innerHTML = `Error: ${data.error || "Could not process image."}`;
+      $("#searchMsg").innerHTML = t('errPrefix', data.error || t('errCouldNotProcess'));
       $("#debrandSection").classList.add("hidden");
       return;
     }
@@ -538,7 +758,7 @@ async function doDebrand(){
     renderDebrandedStage(debrandedSrc);
 
   } catch(e) {
-    $("#searchMsg").innerHTML = "Network error — could not reach the AI service. Please try again.";
+    $("#searchMsg").innerHTML = t('errNetworkAI');
     $("#debrandSection").classList.add("hidden");
   }
 }
@@ -549,26 +769,26 @@ function renderDebrandedStage(debrandedSrc){
   $("#stage").innerHTML = `
     <div style="display:flex;gap:28px;justify-content:center;flex-wrap:wrap;align-items:flex-start">
       <div style="text-align:center">
-        <div class="obj-cap">— original —</div>
+        <div class="obj-cap">${t('capOriginal')}</div>
         <img class="obj-img" src="${originalSrc}" alt="Original product">
       </div>
       <div style="text-align:center">
-        <div class="obj-cap">— logo removed —</div>
+        <div class="obj-cap">${t('capLogoRemoved')}</div>
         <img class="obj-img" src="${debrandedSrc}" alt="De-branded product">
       </div>
     </div>
-    <div class="ask" style="margin-top:28px">Without the logo — would you still want this?</div>
+    <div class="ask" style="margin-top:28px">${t('askWithoutLogo')}</div>
     <div class="choice-row">
-      <button class="lk-btn" id="yesBtn">Yes — the object speaks for itself</button>
-      <button class="lk-btn sub" id="noBtn">No — the name is the point</button>
+      <button class="lk-btn" id="yesBtn">${t('btnYesObject')}</button>
+      <button class="lk-btn sub" id="noBtn">${t('btnNoName')}</button>
     </div>
     <div id="quip"></div>`;
 
   $("#yesBtn").onclick = () => {
-    $("#quip").innerHTML = '<div class="quip">Fair — for many buyers the name <em>is</em> the product: status, signalling, resale value. The brand premium is what you pay above the cost of the <em>object itself</em>.</div>';
+    $("#quip").innerHTML = `<div class="quip">${t('quipDebYes')}</div>`;
   };
   $("#noBtn").onclick = () => {
-    $("#quip").innerHTML = '<div class="quip">That gap — between what you\'d pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they\'re expensive are called <em>Veblen goods</em>.</div>';
+    $("#quip").innerHTML = `<div class="quip">${t('quipDebNo')}</div>`;
   };
 }
 
@@ -616,7 +836,7 @@ async function doSearch(){
   const q = $("#q").value.trim();
 
   // Image is OPTIONAL — typing alone works. Product name is required.
-  if(!q){ $("#searchMsg").textContent = "Type the product name first."; return; }
+  if(!q){ $("#searchMsg").textContent = t('errTypeName'); return; }
 
   const hasImage = !!uploadedImageData;
   $("#searchMsg").innerHTML = "";
@@ -624,9 +844,7 @@ async function doSearch(){
   $("#resultsSection").classList.add("hidden");
 
   // P3: rotating loading messages so the 15-20s wait feels intentional, not stuck
-  const loadMsgs = hasImage
-    ? ["Searching prices across 8 markets", "AI is erasing the logo", "Comparing exchange rates", "Almost there"]
-    : ["Searching prices across 8 markets", "Asking Gemini what this is", "Comparing exchange rates", "Almost there"];
+  const loadMsgs = hasImage ? t('loadImg') : t('loadNoImg');
   $("#stage").innerHTML = `<div class="loading"><em id="loadMsg">${loadMsgs[0]}</em><span class="dots"></span></div>`;
   let msgIdx = 0;
   const loadTimer = setInterval(() => {
@@ -656,7 +874,7 @@ async function doSearch(){
   if(!data.found){
     // P5: more actionable error message
     const detail = data.error ? ` (${esc(data.error)})` : "";
-    $("#stage").innerHTML = `<div class="quip" style="max-width:580px;margin:40px auto;text-align:center;line-height:1.6">Couldn't pull pricing data for "<strong>${esc(q)}</strong>"${detail}. This usually means the name was too vague — try a more specific version like "Rolex Submariner Date 41mm" instead of just "Rolex", or try one of the suggested products above.</div>`;
+    $("#stage").innerHTML = `<div class="quip" style="max-width:580px;margin:40px auto;text-align:center;line-height:1.6">${t('notFound', esc(q), detail)}</div>`;
     $("#resultsSection").classList.add("hidden");
     return;
   }
@@ -688,43 +906,44 @@ function renderStage(){
   if(!current) return;
   const it = current;
   const homePrice = (it.prices && typeof it.prices[homeCountry] === "number") ? toHome(it.prices[homeCountry], CURRENCY_OF[homeCountry]) : null;
-  const priceText = homePrice ? fmt(homePrice, homeCur()) : "its sticker price";
+  const priceText = homePrice ? fmt(homePrice, homeCur()) : t('stickerPrice');
 
   let imgHtml;
   if(revealed){
     // Side-by-side reveal: original (with logo) + AI-debranded (if it succeeded)
-    const original = it.img ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.img)}" alt="original" onerror="this.parentElement.style.display='none'"><div class="obj-cap" style="display:block">— original —</div></div>` : "";
-    const after = it.debrandedImg ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.debrandedImg)}" alt="logo removed"><div class="obj-cap" style="display:block">— AI removed the logo —</div></div>` : "";
+    const original = it.img ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.img)}" alt="original" onerror="this.parentElement.style.display='none'"><div class="obj-cap" style="display:block">${t('capOriginal')}</div></div>` : "";
+    const after = it.debrandedImg ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.debrandedImg)}" alt="logo removed"><div class="obj-cap" style="display:block">${t('capAIremoved')}</div></div>` : "";
     imgHtml = `<div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px">${original}${after}</div>`;
   } else if(it.debrandedImg){
     // Pre-reveal, AI debrand done: show the cleaned image (no CSS blur needed)
-    imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img" src="${esc(it.debrandedImg)}" alt="${esc(it.category)}"></div><div class="obj-cap">— logo removed by AI —</div></div>`;
+    imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img" src="${esc(it.debrandedImg)}" alt="${esc(it.category)}"></div><div class="obj-cap">${t('capLogoByAI')}</div></div>`;
   } else if(it.img){
     // Pre-reveal, AI debrand still running or failed: original with soft CSS blur
     const pendingNote = it.debrandPending
-      ? `<div class="obj-cap" style="color:var(--gold);margin-bottom:10px;text-transform:none;letter-spacing:.04em;font-style:italic"><em>AI is removing the logo…</em></div>`
+      ? `<div class="obj-cap" style="color:var(--gold);margin-bottom:10px;text-transform:none;letter-spacing:.04em;font-style:italic"><em>${t('aiRemoving')}</em></div>`
       : "";
-    imgHtml = `<div class="object-wrap">${pendingNote}<div class="img-holder"><img class="obj-img soft" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div><div class="obj-cap">— logo blurred —</div></div>`;
+    imgHtml = `<div class="object-wrap">${pendingNote}<div class="img-holder"><img class="obj-img soft" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div><div class="obj-cap">${t('capLogoBlurred')}</div></div>`;
   } else {
-    imgHtml = `<div class="object-wrap"><div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">the object, without the label</div></div></div>`;
+    imgHtml = `<div class="object-wrap"><div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">${t('objWithoutLabel')}</div></div></div>`;
   }
 
+  const homeName = homePrice ? esc(cname(homeCountry)) : null;
   $("#stage").innerHTML = `
     ${imgHtml}
     <div class="brand-line ${revealed?"":"blurred"}">${esc(it.brand)}</div>
-    <div class="origin-line">a ${esc(it.category)} from a house based in ${esc(it.origin)}</div>
-    <div class="ask">${revealed?"":"Logo hidden — "}Would you pay <span class="price-em">${priceText}</span> for this ${esc(it.category)}${homePrice ? `, bought in ${esc(homeCountry)}`:""}?</div>
+    <div class="origin-line">${t('originLine', esc(it.category), esc(cname(it.origin)))}</div>
+    <div class="ask">${t('askLine', revealed, priceText, esc(it.category), homeName)}</div>
     ${revealed ? "" : `<div class="choice-row">
-      <button class="lk-btn" id="yesBtn2">Yes — I'd still buy it</button>
-      <button class="lk-btn sub" id="noBtn2">No — not without the name</button>
+      <button class="lk-btn" id="yesBtn2">${t('btnYesBuy')}</button>
+      <button class="lk-btn sub" id="noBtn2">${t('btnNoNotWithout')}</button>
     </div>`}
     <div id="quip2"></div>`;
 
   if(!revealed){
     $("#yesBtn2").onclick = () => reveal("yes");
     $("#noBtn2").onclick = () => {
-      $("#quip2").innerHTML = `<div class="quip">That gap — between what you'd pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they're expensive are called <em>Veblen goods</em>. Either way, here's where it costs the least.</div>
-        <div class="choice-row"><button class="lk-btn" id="anywayBtn">Show me the prices anyway</button></div>`;
+      $("#quip2").innerHTML = `<div class="quip">${t('quipStageNo')}</div>
+        <div class="choice-row"><button class="lk-btn" id="anywayBtn">${t('btnShowAnyway')}</button></div>`;
       $("#anywayBtn").onclick = () => reveal("no");
     };
   }
@@ -734,8 +953,8 @@ function reveal(answer){
   revealed = true;
   renderStage();
   $("#quip2").innerHTML = answer === "yes"
-    ? `<div class="quip">Fair — for many buyers the name <em>is</em> the product: status, signalling, resale value. So: where on earth do you get it for the least?</div>`
-    : `<div class="quip">Honest. And if you ever do cave — cave in the cheapest country.</div>`;
+    ? `<div class="quip">${t('revealYes')}</div>`
+    : `<div class="quip">${t('revealNo')}</div>`;
   renderResults();
   $("#resultsSection").classList.remove("hidden");
   $("#resultsSection").scrollIntoView({behavior:"smooth",block:"start"});
@@ -753,7 +972,7 @@ function renderResults(){
   }).filter(Boolean).sort((a,b)=>a.home - b.home);
 
   if(rows.length === 0){
-    $("#results").innerHTML = '<div class="quip" style="text-align:center;margin:40px auto">No country prices were returned for this product. Try a more specific product name.</div>';
+    $("#results").innerHTML = `<div class="quip" style="text-align:center;margin:40px auto">${t('noPrices')}</div>`;
     return;
   }
 
@@ -768,57 +987,56 @@ function renderResults(){
 
   let verdict = `<div class="verdict">
     <div class="v-top">
-      <h3>Cheapest — <span class="cc">${esc(cheapest.country)}</span></h3>
+      <h3>${t('cheapestLabel')} — <span class="cc">${esc(cname(cheapest.country))}</span></h3>
       <span class="v-price">${fmt(cheapest.home, homeCur())}</span>
     </div>
-    <p>Most expensive is <strong>${esc(dearest.country)}</strong> at ${fmt(dearest.home, homeCur())} — a <strong>${spreadPct.toFixed(0)}%</strong> spread for one identical product.`;
+    <p>${t('mostExpensive', esc(cname(dearest.country)), fmt(dearest.home, homeCur()), spreadPct.toFixed(0))}`;
   if(youRow){
-    verdict += ` Bought at home in <strong>${esc(homeCountry)}</strong> you'd pay ${fmt(youRow.home, homeCur())}, rank ${youRank} of ${rows.length}. ${savePctVsYou>0.5?`Bringing it back from ${esc(cheapest.country)} would shave roughly <strong>${savePctVsYou.toFixed(0)}%</strong> off the sticker (before travel and any tourist refund).`:`You're already in the cheapest tier.`}`;
+    verdict += ` ${t('boughtHome', esc(cname(homeCountry)), fmt(youRow.home, homeCur()), youRank, rows.length)} ${savePctVsYou>0.5 ? t('saveBringBack', esc(cname(cheapest.country)), savePctVsYou.toFixed(0)) : t('alreadyCheapest')}`;
   } else {
-    verdict += ` Switch your "shopping from" country at the top to see what you'd pay locally.`;
+    verdict += ` ${t('switchCountry')}`;
   }
   verdict += `</p><p>${originSold ? (originIsCheapest
-    ? `It's cheapest in the brand's home country, ${esc(it.origin)} — the familiar "no import duty at the source."`
-    : `Note — it is <em>not</em> cheapest in the brand's home country (${esc(it.origin)}); here local taxes, retail competition or pricing strategy outweigh the origin advantage.`)
-    : `The brand's home country (${esc(it.origin)}) isn't among the markets compared here.`}</p></div>`;
+    ? t('originCheapest', esc(cname(it.origin)))
+    : t('originNotCheapest', esc(cname(it.origin))))
+    : t('originNotCompared', esc(cname(it.origin)))}</p></div>`;
 
   const chart = `<div class="chart">${rows.map(r=>{
     const pct = Math.max(4, r.home/max*100);
     const cls = (r===cheapest?"cheapest":"") + (r.isHome?" home":"");
     return `<div class="bar-row">
-      <div class="cy"><span class="cc">${r.cc}</span><span class="nm">${esc(r.country)}</span>${r.isHome?'<span class="you-tag">you</span>':''}</div>
+      <div class="cy"><span class="cc">${r.cc}</span><span class="nm">${esc(cname(r.country))}</span>${r.isHome?`<span class="you-tag">${t('youTag')}</span>`:''}</div>
       <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
       <div class="bar-val">${fmt(r.home, homeCur())}</div>
     </div>`;
   }).join("")}</div>`;
 
   const table = `<div class="table-scroll"><table>
-    <thead><tr><th>#</th><th>Country</th><th>Local price</th><th>In ${homeCur()}</th><th>Tax / visitor note</th></tr></thead>
+    <thead><tr><th>#</th><th>${t('thCountry')}</th><th>${t('thLocal')}</th><th>${t('thInCur', homeCur())}</th><th>${t('thTax')}</th></tr></thead>
     <tbody>${rows.map((r,i)=>`<tr>
       <td>${i+1}</td>
-      <td class="country"><span class="cc">${r.cc}</span>${esc(r.country)}
-        ${r.country===it.origin?'<span class="note-tag">home of the brand</span>':''}
-        ${r===cheapest?'<span class="note-tag">cheapest</span>':''}
-        ${r.isHome?'<span class="note-tag">your locale</span>':''}</td>
+      <td class="country"><span class="cc">${r.cc}</span>${esc(cname(r.country))}
+        ${r.country===it.origin?`<span class="note-tag">${t('tagHome')}</span>`:''}
+        ${r===cheapest?`<span class="note-tag">${t('tagCheapest')}</span>`:''}
+        ${r.isHome?`<span class="note-tag">${t('tagYou')}</span>`:''}</td>
       <td>${fmt(r.local, r.localCur)}</td>
       <td class="num">${fmt(r.home, homeCur())}</td>
-      <td>${(COUNTRIES[r.country]||{}).tax || ""}</td>
+      <td>${taxOf(r.country)}</td>
     </tr>`).join("")}</tbody></table></div>`;
 
   // P4: macro takeaway callout — Gemini ties this specific result to a macro concept
   const macroCallout = it.macro_insight
-    ? `<div class="macro-callout"><span class="label">📈 The macro</span>${esc(it.macro_insight)}</div>`
+    ? `<div class="macro-callout"><span class="label">${t('macroLabel')}</span>${esc(it.macro_insight)}</div>`
     : "";
 
-  const genka = it.blurb ? `<div class="genka"><strong>原価 — a reality check.</strong> ${esc(it.blurb)}</div>` : "";
+  const genka = it.blurb ? `<div class="genka"><strong>${t('genka')}</strong> ${esc(it.blurb)}</div>` : "";
 
-  const sourcesHtml = (it.sources && it.sources.length) ? `<div style="margin-top:24px;font-size:12px;color:var(--ink-soft);line-height:1.8">Gemini used these sources: ${it.sources.slice(0,4).map(u=>{try{return `<a href="${esc(u)}" target="_blank" rel="noopener" style="font-size:12px;margin-right:10px">${esc(new URL(u).hostname)}</a>`;}catch(e){return "";}}).filter(Boolean).join("")}</div>` : "";
+  const sourcesHtml = (it.sources && it.sources.length) ? `<div style="margin-top:24px;font-size:12px;color:var(--ink-soft);line-height:1.8">${t('sources')} ${it.sources.slice(0,4).map(u=>{try{return `<a href="${esc(u)}" target="_blank" rel="noopener" style="font-size:12px;margin-right:10px">${esc(new URL(u).hostname)}</a>`;}catch(e){return "";}}).filter(Boolean).join("")}</div>` : "";
 
   $("#results").innerHTML = verdict + macroCallout + chart + table + genka + sourcesHtml;
 }
 
 /* ---- init ---- */
-buildHomeSelect();
 setupUpload();
 $("#goBtn").onclick = doSearch;
 $("#q").addEventListener("keydown", e => { if(e.key === "Enter") doSearch(); });
@@ -831,6 +1049,11 @@ document.querySelectorAll("#examples a").forEach(a => {
     doSearch();
   };
 });
+
+// Language toggle (EN ⇄ JA), persisted in localStorage.
+$("#langToggle").onclick = () => setLang(lang === "ja" ? "en" : "ja");
+
+applyLang();   // builds the locale dropdown + paints the saved language
 </script>
 </body>
 </html>
