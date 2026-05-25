@@ -7,6 +7,7 @@
    ========================================================================== */
 
 const COUNTRIES = ["United States","Canada","France","Italy","United Kingdom","Switzerland","Japan","South Korea"];
+const VALID_CURRENCIES = ["USD","CAD","EUR","GBP","CHF","JPY","KRW"];
 const MODEL = "gemini-2.5-flash";
 const API_KEY_FALLBACK = ""; // set GEMINI_API_KEY as Cloudflare Worker secret
 
@@ -37,8 +38,12 @@ export default {
     if (!q) return json({ found: false, error: "Add ?q=<product name>" }, 400);
     if (q.length > 120) return json({ found: false, error: "Query too long" }, 400);
 
+    // The display currency the user picked on the site (defaults to USD).
+    let displayCur = (url.searchParams.get("currency") || "USD").trim().toUpperCase();
+    if (!VALID_CURRENCIES.includes(displayCur)) displayCur = "USD";
+
     const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
-    const prompt = buildPrompt(q);
+    const prompt = buildPrompt(q, displayCur);
 
     let geminiRes;
     try {
@@ -72,10 +77,13 @@ export default {
     const parsed = extractJson(text);
     if (!parsed) return json({ found: false, error: "Gemini did not return parseable data", raw: text.slice(0, 400) }, 200);
 
-    const prices = {};
+    const prices = {};       // each market's price in its OWN currency
+    const homePrices = {};   // each market's price converted to the user's display currency
     for (const c of COUNTRIES) {
       const v = parsed.prices?.[c];
       if (typeof v === "number" && isFinite(v) && v > 0) prices[c] = v;
+      const h = parsed.prices_display?.[c];
+      if (typeof h === "number" && isFinite(h) && h > 0) homePrices[c] = h;
     }
 
     // Build proxied image URL so the browser can actually load it
@@ -92,6 +100,8 @@ export default {
       macro_insight: str(parsed.macro_insight) || "",
       image_url: proxyImg,
       prices,
+      home_prices: homePrices,
+      home_currency: displayCur,
       currencies: { "United States":"USD","Canada":"CAD","France":"EUR","Italy":"EUR","United Kingdom":"GBP","Switzerland":"CHF","Japan":"JPY","South Korea":"KRW" },
       sources,
       model: MODEL,
@@ -195,10 +205,11 @@ async function handleDebrand(request, env) {
   }, 200);
 }
 
-function buildPrompt(q) {
+function buildPrompt(q, displayCur) {
   return [
     `You are a meticulous research assistant. Use Google Search to find current, real information about this product: "${q}".`,
     `Identify the single specific product the user most likely means (a real, currently-sold item).`,
+    `The user is shopping in ${displayCur}. You must report every market's price BOTH in that market's own currency AND converted to ${displayCur}.`,
     `Return ONLY a JSON object — no markdown fences, no commentary before or after. Schema:`,
     `{`,
     `  "found": true | false,`,
@@ -207,7 +218,7 @@ function buildPrompt(q) {
     `  "origin": "country where the brand/house is based (e.g. Italy for Gucci, France for Louis Vuitton, Switzerland for Rolex)",`,
     `  "category": "short noun phrase, e.g. handbag / watch / pair of sneakers / belt",`,
     `  "blurb": "one sentence: what it is, and roughly how its production cost compares to its retail price (qualitative is fine)",`,
-    `  "prices": {`,
+    `  "prices": {            // each market's REAL current retail price in that country's OWN currency`,
     `    "United States": <number, in US dollars>,`,
     `    "Canada": <number, in Canadian dollars>,`,
     `    "France": <number, in euros>,`,
@@ -217,10 +228,20 @@ function buildPrompt(q) {
     `    "Japan": <number, in Japanese yen>,`,
     `    "South Korea": <number, in South Korean won>`,
     `  },`,
+    `  "prices_display": {    // THE SAME prices, each converted to ${displayCur} using TODAY'S real exchange rate (look the rate up)`,
+    `    "United States": <number, in ${displayCur}>,`,
+    `    "Canada": <number, in ${displayCur}>,`,
+    `    "France": <number, in ${displayCur}>,`,
+    `    "Italy": <number, in ${displayCur}>,`,
+    `    "United Kingdom": <number, in ${displayCur}>,`,
+    `    "Switzerland": <number, in ${displayCur}>,`,
+    `    "Japan": <number, in ${displayCur}>,`,
+    `    "South Korea": <number, in ${displayCur}>`,
+    `  },`,
     `  "image_url": "a direct URL to a clean product photo (https, ending in .jpg/.png/.webp). Strongly prefer Wikimedia Commons or Wikipedia images. Otherwise use official brand website images or well-known retail sites.",`,
     `  "macro_insight": "ONE concise sentence (≤ 35 words) tying THIS specific result to ONE AP Macroeconomics concept — pick the most relevant from: exchange rates / currency depreciation, purchasing power parity / law of one price, tariffs & VAT / import duties, net exports / shopping tourism, or home-country origin advantage. Be specific about which country is cheapest and WHY (e.g. 'Switzerland is cheapest because its 8.1% VAT is the lowest in this set AND it's the brand's home country — origin advantage amplified by low tax.')."`,
     `}`,
-    `Use realistic CURRENT retail prices in EACH country's OWN currency (not converted). If you genuinely cannot identify the product, set "found": false and you may omit prices.`,
+    `Rules: Use realistic CURRENT retail prices from each country's official store or a reputable local retailer, in that country's OWN currency, in "prices". Then in "prices_display" convert each of those exact amounts to ${displayCur} using the real exchange rate today (search for it) — do NOT use a rounded or guessed rate. Plain numbers only: no currency symbols, no thousands separators. If you genuinely cannot identify the product, set "found": false and you may omit prices.`,
   ].join("\n");
 }
 

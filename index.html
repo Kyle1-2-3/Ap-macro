@@ -471,7 +471,7 @@ const STR = {
   heroH1:{en:`The Same Object,<br>a <span class="it">Different</span> Price<br>at Every Border`, ja:`同じ商品なのに、<br>国境ごとに<br><span class="it">変わる</span>値段。`},
   heroLede:{en:`Name a branded product. Decide whether you'd still want it with the logo hidden — then see which country in the world sells it for the least, in your own currency, and why the price moves when you cross a frontier.`, ja:`ブランド品の名前を入力してください。ロゴを隠してもまだ欲しいかを考えたうえで、世界のどの国がいちばん安く売っているかを、あなたの通貨で確かめましょう。そして、国境を越えると値段が動く理由も見てみましょう。`},
   discLbl:{en:"Live", ja:"ライブ"},
-  discText:{en:`Prices are looked up in real time using <strong>Google Gemini 2.5 Flash with Google Search grounding</strong>. Accuracy depends on what's currently published online — treat each result as a directional snapshot, not a quote. Exchange rates are static (≈ May 2026).`, ja:`価格は <strong>Google Gemini 2.5 Flash（Google 検索グラウンディング付き）</strong> を使ってリアルタイムに調べています。精度はネット上で現在公開されている情報に左右されるため、各結果は正確な見積もりではなく、おおよその目安として捉えてください。為替レートは固定値です（2026年5月ごろ）。`},
+  discText:{en:`Prices are looked up in real time using <strong>Google Gemini 2.5 Flash with Google Search grounding</strong> and shown in your selected currency at current exchange rates. Accuracy depends on what's currently published online — treat each result as a directional snapshot, not a quote.`, ja:`価格は <strong>Google Gemini 2.5 Flash（Google 検索グラウンディング付き）</strong> を使ってリアルタイムに調べ、選択した通貨に現在の為替レートで換算して表示しています。精度はネット上で現在公開されている情報に左右されるため、各結果は正確な見積もりではなく、おおよその目安として捉えてください。`},
   locOverline:{en:"01 — Locale", ja:"01 — 地域"},
   locH2:{en:"Where are you shopping from?", ja:"どこで買い物しますか？"},
   locP:{en:"This sets the currency every price below is shown in — the money you actually carry.", ja:"下に表示されるすべての価格は、ここで選んだ国の通貨——あなたが実際に使うお金——で表示されます。"},
@@ -491,7 +491,7 @@ const STR = {
   honestH2:{en:"Is it the object — or the name?", ja:"モノそのもの？それとも名前？"},
   verdictOverline:{en:"04 — The Verdict", ja:"04 — 結論"},
   verdictH2:{en:"Where in the world is it cheapest?", ja:"世界でいちばん安いのはどこ？"},
-  verdictP:{en:"Each country's local price, converted to your currency at the listed rates, ranked low to high.", ja:"各国の現地価格を、記載のレートであなたの通貨に換算し、安い順に並べています。"},
+  verdictP:{en:"Each market's real local price, shown in your selected currency at current exchange rates, ranked low to high.", ja:"各市場の実際の現地価格を、現在の為替レートで選択した通貨に換算して表示し、安い順に並べています。"},
   econOverline:{en:"The Economics", ja:"経済のしくみ"},
   econH2:{en:"Why a bag isn't a bag everywhere", ja:"なぜ同じバッグでも国で違うのか"},
   econP:{en:"Four ideas from the AP Macroeconomics open-economy unit, hiding inside that price tag.", ja:"その値札の中に隠れている、AP マクロ経済学「開放経済」分野の4つの考え方。"},
@@ -521,8 +521,8 @@ const STR = {
 // Dynamic strings used inside JS render functions. Values may be functions.
 const T = {
   en:{
-    rateUSD:"Prices shown in US dollars.",
-    rateNote:(c,usd,inv)=>`Rate used — 1 ${c} = $${usd}  (so $1 = ${inv} ${c}).`,
+    rateLive:(c)=>`Prices are looked up live and shown in ${c} — no fixed exchange rate.`,
+    updatingPrices:"Updating prices in your currency",
     errImageFile:"Please upload an image file.",
     errImageLarge:"Image too large (max 10 MB).",
     loadingDebrand:"AI is removing brand logos",
@@ -572,8 +572,8 @@ const T = {
     sources:"Gemini used these sources:"
   },
   ja:{
-    rateUSD:"価格は米ドルで表示しています。",
-    rateNote:(c,usd,inv)=>`適用レート — 1 ${c} = $${usd}（つまり $1 = ${inv} ${c}）。`,
+    rateLive:(c)=>`価格は ${c} でリアルタイムに取得しています（固定の為替レートは使用していません）。`,
+    updatingPrices:"選択した通貨で価格を更新中",
     errImageFile:"画像ファイルをアップロードしてください。",
     errImageLarge:"画像が大きすぎます（最大10MB）。",
     loadingDebrand:"AI がブランドロゴを消しています",
@@ -658,6 +658,7 @@ const $ = s => document.querySelector(s);
 let homeCountry = "United States";
 let current = null;     // selected item
 let revealed = false;
+let lastQuery = "";     // last product looked up (so a currency switch can re-run it)
 const homeCur = () => CURRENCY_OF[homeCountry];
 
 function fmt(amount, cur){
@@ -672,13 +673,30 @@ function buildHomeSelect(){
   const sel = $("#home");
   sel.innerHTML = Object.keys(COUNTRIES).map(c =>
     `<option value="${c}" ${c===homeCountry?"selected":""}>${esc(cname(c))} — ${CURRENCY_OF[c]}</option>`).join("");
-  sel.onchange = () => { homeCountry = sel.value; updateRateNote(); if(current && !revealed) renderStage(); if(current && revealed) renderResults(); };
+  sel.onchange = () => { homeCountry = sel.value; updateRateNote(); if(current) refetchForCurrency(); };
   updateRateNote();
 }
+
+// Prices now come from the API already in the selected currency, so changing the
+// currency re-runs the lookup rather than doing a client-side conversion.
+async function refetchForCurrency(){
+  const query = lastQuery || (current && current.name) || "";
+  if(!query){ renderStage(); if(revealed) renderResults(); return; }
+  const wasRevealed = revealed;
+  $(wasRevealed ? "#results" : "#stage").innerHTML = `<div class="loading"><em>${t('updatingPrices')}<span class="dots"></span></em></div>`;
+  try{
+    const data = await fetch(`${WORKER_URL}/?q=${encodeURIComponent(query)}&currency=${encodeURIComponent(homeCur())}`).then(r=>r.json());
+    if(data && data.found){
+      if(data.prices) current.prices = data.prices;
+      current.homePrices = data.home_prices || null;
+      current.homeCurrencyFetched = data.home_currency || homeCur();
+    }
+  }catch(e){ /* keep existing data; render falls back to static conversion */ }
+  renderStage();
+  if(wasRevealed) renderResults();
+}
 function updateRateNote(){
-  const c = homeCur(), usdPer = RATES[c];
-  $("#rateNote").textContent = c==="USD" ? t('rateUSD')
-    : t('rateNote', c, usdPer.toLocaleString(undefined,{maximumFractionDigits:6}), (1/usdPer).toLocaleString(undefined,{maximumFractionDigits:2}));
+  $("#rateNote").textContent = t('rateLive', homeCur());
 }
 
 /* ---- image upload ---- */
@@ -844,6 +862,7 @@ async function doSearch(){
 
   // Image is OPTIONAL — typing alone works. Product name is required.
   if(!q){ $("#searchMsg").textContent = t('errTypeName'); return; }
+  lastQuery = q;
 
   const hasImage = !!uploadedImageData;
   $("#searchMsg").innerHTML = "";
@@ -864,7 +883,7 @@ async function doSearch(){
   revealed = false;
 
   // Fire calls in parallel. Debrand only if user uploaded an image.
-  const searchPromise = fetch(`${WORKER_URL}/?q=${encodeURIComponent(q)}`)
+  const searchPromise = fetch(`${WORKER_URL}/?q=${encodeURIComponent(q)}&currency=${encodeURIComponent(homeCur())}`)
     .then(r => r.json())
     .catch(e => ({ found:false, error:"Network: "+e.message }));
   const debrandPromise = hasImage
@@ -902,7 +921,9 @@ async function doSearch(){
     debrandPending: false,
     blurb: data.blurb,
     macro_insight: data.macro_insight || "",  // P4: macro takeaway from Gemini
-    prices: data.prices,
+    prices: data.prices,                       // each market's price in its own currency
+    homePrices: data.home_prices || null,      // each market's price in the selected currency (from the API)
+    homeCurrencyFetched: data.home_currency || homeCur(),
     sources: data.sources || []
   };
   if(hasImage && !debrandedImg && debrandData.error){ console.warn("AI debrand failed:", debrandData.error); }
@@ -912,7 +933,9 @@ async function doSearch(){
 function renderStage(){
   if(!current) return;
   const it = current;
-  const homePrice = (it.prices && typeof it.prices[homeCountry] === "number") ? toHome(it.prices[homeCountry], CURRENCY_OF[homeCountry]) : null;
+  const homePrice = (it.homePrices && typeof it.homePrices[homeCountry] === "number")
+    ? it.homePrices[homeCountry]
+    : ((it.prices && typeof it.prices[homeCountry] === "number") ? toHome(it.prices[homeCountry], CURRENCY_OF[homeCountry]) : null);
   const priceText = homePrice ? fmt(homePrice, homeCur()) : t('stickerPrice');
 
   let imgHtml;
@@ -975,7 +998,9 @@ function renderResults(){
     if(!localCur) return null;
     const local = it.prices[country];
     if(typeof local !== "number" || !isFinite(local) || local <= 0) return null;
-    return { country, cc:(COUNTRIES[country]||{}).cc || "??", localCur, local, home:toHome(local, localCur), isHome:country===homeCountry };
+    // Prefer the API's price in the selected currency; fall back to static conversion.
+    const home = (it.homePrices && typeof it.homePrices[country] === "number") ? it.homePrices[country] : toHome(local, localCur);
+    return { country, cc:(COUNTRIES[country]||{}).cc || "??", localCur, local, home, isHome:country===homeCountry };
   }).filter(Boolean).sort((a,b)=>a.home - b.home);
 
   if(rows.length === 0){
