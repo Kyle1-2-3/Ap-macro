@@ -55,7 +55,7 @@ export default {
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             tools: [{ google_search: {} }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+            generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
           }),
         }
       );
