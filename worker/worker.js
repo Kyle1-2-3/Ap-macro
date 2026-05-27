@@ -8,6 +8,12 @@
 
 const COUNTRIES = ["United States","Canada","France","Italy","United Kingdom","Switzerland","Japan","South Korea"];
 const VALID_CURRENCIES = ["USD","CAD","EUR","GBP","CHF","JPY","KRW"];
+const CURRENCY_OF = {
+  "United States":"USD","Canada":"CAD","France":"EUR","Italy":"EUR",
+  "United Kingdom":"GBP","Switzerland":"CHF","Japan":"JPY","South Korea":"KRW"
+};
+// Fallback only — value of 1 unit in USD — used if the live FX API is unreachable.
+const FX_FALLBACK_USD = { USD:1, CAD:0.73, EUR:1.08, GBP:1.27, CHF:1.12, JPY:0.0064, KRW:0.00073 };
 const MODEL = "gemini-2.5-flash";
 const API_KEY_FALLBACK = ""; // set GEMINI_API_KEY as Cloudflare Worker secret
 
@@ -42,6 +48,9 @@ export default {
     let displayCur = (url.searchParams.get("currency") || "USD").trim().toUpperCase();
     if (!VALID_CURRENCIES.includes(displayCur)) displayCur = "USD";
 
+    // Fetch real, current exchange rates in parallel with the Gemini lookup.
+    const ratesPromise = getRates(displayCur);
+
     const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
     const prompt = buildPrompt(q, displayCur);
 
@@ -55,7 +64,7 @@ export default {
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             tools: [{ google_search: {} }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+            generationConfig: { temperature: 0, maxOutputTokens: 8192 },
           }),
         }
       );
@@ -77,13 +86,16 @@ export default {
     const parsed = extractJson(text);
     if (!parsed) return json({ found: false, error: "Gemini did not return parseable data", raw: text.slice(0, 400) }, 200);
 
+    // Convert each market's local price to the display currency using REAL current rates.
+    const rates = (await ratesPromise) || fallbackRates(displayCur);
     const prices = {};       // each market's price in its OWN currency
     const homePrices = {};   // each market's price converted to the user's display currency
     for (const c of COUNTRIES) {
       const v = parsed.prices?.[c];
-      if (typeof v === "number" && isFinite(v) && v > 0) prices[c] = v;
-      const h = parsed.prices_display?.[c];
-      if (typeof h === "number" && isFinite(h) && h > 0) homePrices[c] = h;
+      if (typeof v !== "number" || !isFinite(v) || v <= 0) continue;
+      prices[c] = v;
+      const rate = rates[CURRENCY_OF[c]];
+      if (typeof rate === "number" && rate > 0) homePrices[c] = Math.round(v / rate);
     }
 
     // Build proxied image URL so the browser can actually load it
@@ -102,7 +114,8 @@ export default {
       prices,
       home_prices: homePrices,
       home_currency: displayCur,
-      currencies: { "United States":"USD","Canada":"CAD","France":"EUR","Italy":"EUR","United Kingdom":"GBP","Switzerland":"CHF","Japan":"JPY","South Korea":"KRW" },
+      fx_date: rates.__date || null,
+      currencies: CURRENCY_OF,
       sources,
       model: MODEL,
     }, 200);
@@ -209,7 +222,6 @@ function buildPrompt(q, displayCur) {
   return [
     `You are a meticulous research assistant. Use Google Search to find current, real information about this product: "${q}".`,
     `Identify the single specific product the user most likely means (a real, currently-sold item).`,
-    `The user is shopping in ${displayCur}. You must report every market's price BOTH in that market's own currency AND converted to ${displayCur}.`,
     `Return ONLY a JSON object — no markdown fences, no commentary before or after. Schema:`,
     `{`,
     `  "found": true | false,`,
@@ -228,20 +240,10 @@ function buildPrompt(q, displayCur) {
     `    "Japan": <number, in Japanese yen>,`,
     `    "South Korea": <number, in South Korean won>`,
     `  },`,
-    `  "prices_display": {    // THE SAME prices, each converted to ${displayCur} using TODAY'S real exchange rate (look the rate up)`,
-    `    "United States": <number, in ${displayCur}>,`,
-    `    "Canada": <number, in ${displayCur}>,`,
-    `    "France": <number, in ${displayCur}>,`,
-    `    "Italy": <number, in ${displayCur}>,`,
-    `    "United Kingdom": <number, in ${displayCur}>,`,
-    `    "Switzerland": <number, in ${displayCur}>,`,
-    `    "Japan": <number, in ${displayCur}>,`,
-    `    "South Korea": <number, in ${displayCur}>`,
-    `  },`,
     `  "image_url": "a direct URL to a clean product photo (https, ending in .jpg/.png/.webp). Strongly prefer Wikimedia Commons or Wikipedia images. Otherwise use official brand website images or well-known retail sites.",`,
     `  "macro_insight": "ONE concise sentence (≤ 35 words) tying THIS specific result to ONE AP Macroeconomics concept — pick the most relevant from: exchange rates / currency depreciation, purchasing power parity / law of one price, tariffs & VAT / import duties, net exports / shopping tourism, or home-country origin advantage. Be specific about which country is cheapest and WHY (e.g. 'Switzerland is cheapest because its 8.1% VAT is the lowest in this set AND it's the brand's home country — origin advantage amplified by low tax.')."`,
     `}`,
-    `Rules: You MUST return a price for EVERY one of the eight countries in the schema — never omit a country, and never use null, 0, or "N/A". Prefer the REAL current retail price from each country's official store or a reputable local retailer, in that country's OWN currency. If a specific country's exact local price isn't published, ESTIMATE it from the prices you do have, adjusting for that market's typical luxury markup, local tax (VAT / consumption tax), and the current exchange rate — but still give a realistic number rather than dropping the country. Then in "prices_display" convert each of those exact amounts to ${displayCur} using today's real exchange rate (search for it) — do NOT use a rounded or guessed rate. Plain numbers only: no currency symbols, no thousands separators. Only set "found": false if you cannot identify the product at all.`,
+    `Rules: Return a price for EVERY one of the eight countries (never null, 0, or "N/A"), each in that country's OWN local currency. Do NOT convert anything — currency conversion is handled separately with live exchange rates, so just give the real local sticker price. Luxury brands set DIFFERENT prices per region, so reflect the GENUINE regional differences from the brand's official local pricing (e.g. European and Japanese list prices are often lower than North America; Switzerland's VAT is low) — do NOT make the markets identical or copy one figure across countries. Prefer the brand's own country websites or reputable local retailers. If a market's exact price isn't published, estimate it from the brand's known regional pricing pattern. Plain numbers only: no currency symbols, no thousands separators. Only set "found": false if you cannot identify the product at all.`,
   ].join("\n");
 }
 
@@ -268,4 +270,29 @@ function cleanImageUrl(v) {
 }
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" } });
+}
+
+// Live exchange rates from the ECB via frankfurter.app (free, no key).
+// Returns { CUR: units of CUR per 1 `base` }, including base:1, plus __date.
+async function getRates(base) {
+  try {
+    const r = await fetch(`https://api.frankfurter.dev/v1/latest?base=${base}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const rates = (d && d.rates) ? d.rates : {};
+    rates[base] = 1;
+    rates.__date = (d && d.date) || null;
+    // Bail to fallback if a currency we need is missing.
+    for (const c of VALID_CURRENCIES) if (typeof rates[c] !== "number") return null;
+    return rates;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Cross-rates from the static USD table, used only if the live API is unreachable.
+function fallbackRates(base) {
+  const r = { __date: null };
+  for (const k of VALID_CURRENCIES) r[k] = FX_FALLBACK_USD[base] / FX_FALLBACK_USD[k];
+  return r;
 }
