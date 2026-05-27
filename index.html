@@ -441,6 +441,51 @@ const ITEMS = [];
 
 const WORKER_URL = "https://ap-macro-lookup.bridge11korea.workers.dev";
 
+/* =====================================================================
+   CURATED PRODUCTS (hybrid mode)
+   ---------------------------------------------------------------------
+   Hand-verified products. If a search matches one of these (by alias),
+   the site uses THESE exact prices instead of the live AI — so demo
+   products are accurate and consistent every time. Anything not listed
+   here falls back to the live Gemini lookup.
+
+   prices = each country's REAL local retail price in its OWN currency.
+   Replace any "verify" value with the real figure (e.g. switch region
+   on the brand's official site). imgRaw = a direct product photo URL.
+   ===================================================================== */
+const CURATED = [
+  {
+    id: "prada-1mr034-cardholder",
+    name: "Printed leather card holder with shoulder strap",
+    brand: "PRADA",
+    origin: "Italy",
+    category: "card holder with shoulder strap",
+    blurb: "A printed calf-hair card holder with a removable chain strap. The leather and hardware cost a small fraction of the retail price — most of what you pay is the triangle logo.",
+    macro_insight: "The same card holder carries a different sticker in each market because Prada sets prices per region, then local VAT/consumption tax and the exchange rate widen the gap — a live example of why the law of one price fails.",
+    imgRaw: "https://www.prada.com/content/dam/pradanux/images/2024/1MR034/2HIM/F0G3N/1MR034_2HIM_F0G3N_SLF.jpg",
+    aliases: ["prada printed leather card holder", "printed leather card holder with shoulder strap", "prada card holder with shoulder strap", "prada 1mr034", "1mr034", "prada cow print card holder", "prada card holder"],
+    prices: {
+      "Canada": 2150,          // ✓ verified — prada.com/ca
+      "United States": 1550,   // estimate — please verify
+      "France": 1350,          // estimate — please verify
+      "Italy": 1350,           // estimate — please verify
+      "United Kingdom": 1150,  // estimate — please verify
+      "Switzerland": 1250,     // estimate — please verify
+      "Japan": 235000,         // estimate — please verify
+      "South Korea": 2050000   // estimate — please verify
+    }
+  }
+];
+
+function matchCurated(q){
+  const s = (q || "").toLowerCase().trim();
+  if(!s) return null;
+  for(const c of CURATED){
+    if((c.aliases || []).some(a => s.includes(a) || a.includes(s))) return c;
+  }
+  return null;
+}
+
 /* =====================  internationalisation (EN / JA)  ===================== */
 let lang = (localStorage.getItem("lang") === "ja") ? "ja" : "en";
 
@@ -680,6 +725,8 @@ function buildHomeSelect(){
 // Prices now come from the API already in the selected currency, so changing the
 // currency re-runs the lookup rather than doing a client-side conversion.
 async function refetchForCurrency(){
+  // Curated products use the static rate table, so a currency switch just re-renders.
+  if(current && current.curated){ renderStage(); if(revealed) renderResults(); return; }
   const query = lastQuery || (current && current.name) || "";
   if(!query){ renderStage(); if(revealed) renderResults(); return; }
   const wasRevealed = revealed;
@@ -857,12 +904,38 @@ async function debrandInBackground(imageUrl){
   }
 }
 
+// Build the result from a curated product (no AI call) — exact, reproducible prices.
+function runCurated(c){
+  $("#searchMsg").innerHTML = "";
+  $("#debrandSection").classList.remove("hidden");
+  $("#resultsSection").classList.add("hidden");
+  revealed = false;
+  const userImg = uploadedImageData ? `data:${uploadedImageData.mimeType};base64,${uploadedImageData.base64}` : "";
+  current = {
+    id: "curated-" + c.id,
+    name: c.name, brand: c.brand, category: c.category, origin: c.origin,
+    img: userImg || (c.imgRaw ? `${WORKER_URL}/img?url=${encodeURIComponent(c.imgRaw)}` : ""),
+    debrandedImg: null, debrandPending: false,
+    blurb: c.blurb || "", macro_insight: c.macro_insight || "",
+    prices: c.prices,
+    homePrices: null,                 // null -> convert with the static rate table (stable & reproducible)
+    homeCurrencyFetched: homeCur(),
+    sources: [], curated: true
+  };
+  renderStage();
+  $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
 async function doSearch(){
   const q = $("#q").value.trim();
 
   // Image is OPTIONAL — typing alone works. Product name is required.
   if(!q){ $("#searchMsg").textContent = t('errTypeName'); return; }
   lastQuery = q;
+
+  // Hybrid: a hand-verified product short-circuits the live AI lookup.
+  const curated = matchCurated(q);
+  if(curated){ runCurated(curated); return; }
 
   const hasImage = !!uploadedImageData;
   $("#searchMsg").innerHTML = "";
