@@ -681,13 +681,8 @@ function updateRateNote(){
 }
 
 /* ---- URL validation ---- */
-const OFFICIAL_DOMAINS = new Set([
-  "prada.com","louisvuitton.com","gucci.com","chanel.com","hermes.com",
-  "dior.com","balenciaga.com","bottegaveneta.com","saintlaurent.com","ysl.com",
-  "burberry.com","fendi.com","loewe.com","celine.com","moncler.com",
-  "cartier.com","tiffany.com","rolex.com","omega.com","tagheuer.com",
-  "iwc.com","nike.com","adidas.com","newbalance.com"
-]);
+// Client-side: only check basic URL format + known blacklist.
+// The full "is this an official brand site?" check happens server-side via Gemini.
 const BLOCKED_DOMAINS = new Set([
   "farfetch.com","ssense.com","net-a-porter.com","mytheresa.com",
   "matchesfashion.com","nordstrom.com","saksfifthavenue.com",
@@ -700,7 +695,6 @@ function validateUrl(input){
   if(parsed.protocol !== "https:") return { valid: false, msg: t('errInvalidUrl') };
   const domain = parsed.hostname.replace(/^www\./, "").toLowerCase();
   if(BLOCKED_DOMAINS.has(domain)) return { valid: false, msg: t('errBlocked', domain) };
-  if(!OFFICIAL_DOMAINS.has(domain)) return { valid: false, msg: t('errNotOfficial', domain) };
   return { valid: true, domain };
 }
 

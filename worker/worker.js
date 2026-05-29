@@ -26,14 +26,6 @@ const CORS = {
 
 /* ---------- Brand config ---------- */
 
-const OFFICIAL_DOMAINS = new Set([
-  "prada.com","louisvuitton.com","gucci.com","chanel.com","hermes.com",
-  "dior.com","balenciaga.com","bottegaveneta.com","saintlaurent.com","ysl.com",
-  "burberry.com","fendi.com","loewe.com","celine.com","moncler.com",
-  "cartier.com","tiffany.com","rolex.com","omega.com","tagheuer.com",
-  "iwc.com","nike.com","adidas.com","newbalance.com",
-]);
-
 const BLOCKED_DOMAINS = new Set([
   "farfetch.com","ssense.com","net-a-porter.com","mytheresa.com",
   "matchesfashion.com","nordstrom.com","saksfifthavenue.com",
@@ -128,22 +120,61 @@ function bareDomain(hostname) {
   return hostname.replace(/^www\./i, "").toLowerCase();
 }
 
-function validateBrandUrl(urlStr) {
+// Quick client-safe checks (no API call needed)
+function preValidateUrl(urlStr) {
   let parsed;
   try { parsed = new URL(urlStr); } catch {
-    return { valid: false, domain: null, rejected: true, reason: "Invalid URL" };
+    return { valid: false, reason: "Invalid URL" };
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return { valid: false, domain: null, rejected: true, reason: "URL must be http(s)" };
+    return { valid: false, reason: "URL must be http(s)" };
   }
   const domain = bareDomain(parsed.hostname);
   if (BLOCKED_DOMAINS.has(domain)) {
-    return { valid: false, domain, rejected: true, reason: `Third-party retailer (${domain}) — please use the official brand URL` };
+    return { valid: false, reason: `Third-party retailer (${domain}) — please use the official brand URL` };
   }
-  if (!OFFICIAL_DOMAINS.has(domain)) {
-    return { valid: false, domain, rejected: true, reason: `Domain ${domain} is not a recognized official brand site` };
+  return { valid: true, domain, parsed };
+}
+
+// Ask Gemini whether a URL belongs to an official brand website (not a reseller/marketplace).
+async function validateOfficialSite(urlStr, geminiKey) {
+  const pre = preValidateUrl(urlStr);
+  if (!pre.valid) return { valid: false, reason: pre.reason };
+
+  const prompt = [
+    `Is this URL from an official brand website (the brand's own online store), or is it a third-party retailer/reseller/marketplace?`,
+    `URL: ${urlStr}`,
+    `Domain: ${pre.domain}`,
+    `Return ONLY a JSON object: { "official": true/false, "brand": "BRAND NAME or null", "reason": "short explanation" }`,
+  ].join("\n");
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 256 },
+        }),
+      }
+    );
+    if (!res.ok) {
+      // If Gemini is down, allow the request through (fail open)
+      return { valid: true, domain: pre.domain };
+    }
+    const data = await res.json();
+    const text = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
+    const parsed = extractJson(text);
+    if (parsed && parsed.official === false) {
+      return { valid: false, reason: parsed.reason || `"${pre.domain}" does not appear to be an official brand website` };
+    }
+    return { valid: true, domain: pre.domain, brand: parsed?.brand || null };
+  } catch {
+    // Network error — fail open
+    return { valid: true, domain: pre.domain };
   }
-  return { valid: true, domain, rejected: false, reason: null };
 }
 
 function buildCountryUrls(inputUrl) {
@@ -302,14 +333,14 @@ async function handleScrape(request, env, url) {
     return json({ found: false, error: `Invalid homeCurrency: ${homeCurrency}` }, 400);
   }
 
-  // Validate URL
-  const validation = validateBrandUrl(inputUrl);
+  const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
+  const FIRECRAWL_KEY = env.FIRECRAWL_API_KEY || "";
+
+  // Validate URL (blocklist check + Gemini official-site check)
+  const validation = await validateOfficialSite(inputUrl, GEMINI_KEY);
   if (!validation.valid) {
     return json({ found: false, error: validation.reason }, 400);
   }
-
-  const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
-  const FIRECRAWL_KEY = env.FIRECRAWL_API_KEY || "";
 
   // Step 1: Scrape the input URL to identify the product
   let product = null;
