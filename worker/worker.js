@@ -326,7 +326,15 @@ async function handleScrape(request, env, url) {
     return json({ found: false, error: "Invalid JSON body" }, 400);
   }
 
-  const inputUrl = (body.url || "").trim();
+  // Strip tracking params (utm_*, gclid, fbclid, etc.) — they confuse scraping & Gemini
+  let inputUrl = (body.url || "").trim();
+  try {
+    const u = new URL(inputUrl);
+    for (const key of [...u.searchParams.keys()]) {
+      if (/^(utm_|gclid|gbraid|gclsrc|gad_|fbclid|mc_|ref$)/.test(key)) u.searchParams.delete(key);
+    }
+    inputUrl = u.toString();
+  } catch { /* leave as-is if not a valid URL — validation will catch it */ }
   const homeCurrency = (body.homeCurrency || "USD").trim().toUpperCase();
   if (!inputUrl) return json({ found: false, error: "Missing 'url' in request body" }, 400);
   if (!VALID_CURRENCIES.includes(homeCurrency)) {
