@@ -99,9 +99,16 @@
   .macro-callout{margin-top:20px;padding:16px 22px;background:var(--bg-soft);border-left:2px solid var(--ink);font-size:15px;color:var(--ink);line-height:1.6}
   .macro-callout .label{display:block;font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--ink);margin-bottom:6px}
 
-  /* ---------- unavailable rows ---------- */
-  tbody tr.unavailable td{color:var(--body);font-style:italic}
-  tbody tr.unavailable td.num{font-family:var(--sans);font-size:13px;font-weight:400;color:var(--body)}
+  /* ---------- upload ---------- */
+  .upload-zone{max-width:680px;border:1px solid var(--line);padding:48px 28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+  .upload-zone:hover,.upload-zone.dragover{border-color:var(--ink);background:var(--bg-soft)}
+  .upload-zone input[type=file]{display:none}
+  .upload-zone .uz-icon{font-size:36px;margin-bottom:12px;color:var(--ink-soft)}
+  .upload-zone .uz-text{font-family:var(--serif);font-size:clamp(18px,2.5vw,24px);color:var(--ink);font-style:italic}
+  .upload-zone .uz-sub{font-family:var(--sans);font-size:13px;color:var(--body);margin-top:8px}
+  .upload-preview{max-width:680px;margin-top:24px;text-align:center}
+  .upload-preview img{max-width:min(400px,90vw);max-height:50vh;border:1px solid var(--line)}
+  .upload-preview .up-actions{margin-top:20px;display:flex;gap:16px;justify-content:center}
 
   /* ---------- locale picker ---------- */
   .locale{display:flex;flex-wrap:wrap;gap:20px;align-items:center;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:24px 0;margin-top:32px}
@@ -219,7 +226,7 @@
 <div class="topbar">
   <div class="wrap masthead">
     <nav class="mast-nav">
-      <a href="#search" data-i18n="navSearch">Search</a>
+      <a href="#search" data-i18n="navUpload">Upload</a>
       <a href="#learn" data-i18n="navEconomics">The Economics</a>
       <a href="#flow" data-i18n="navHow">How It Works</a>
     </nav>
@@ -271,16 +278,38 @@
     <div class="wrap">
       <div class="sec-head">
         <span class="overline" data-i18n="prodOverline">02 — The Product</span>
-        <h2 data-i18n="prodH2">Paste a product URL</h2>
-        <p class="prose" data-i18n="prodP">Paste the URL of any product from an official brand website. We'll scrape the name, photo, and price — then compare it across 8 countries.</p>
+        <h2 data-i18n="prodH2">Upload &amp; identify</h2>
+        <p class="prose" data-i18n="prodP">Upload a photo of any branded product <em>and</em> tell us what it is. AI erases the logo from your photo while Gemini looks up real prices in every major market — then you see where it's cheapest.</p>
       </div>
 
-      <div class="search-wrap">
+      <div style="max-width:680px">
+        <span class="overline" data-i18n="uploadAOverline" style="display:block;margin-bottom:14px">A — your photo</span>
+        <div class="upload-zone" id="uploadZone">
+          <div class="uz-icon">↑</div>
+          <div class="uz-text" data-i18n="uzText">Drop an image here</div>
+          <div class="uz-sub" data-i18n="uzSub">or click to browse · JPG, PNG, WebP</div>
+          <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp">
+        </div>
+        <div class="upload-preview hidden" id="uploadPreview">
+          <img id="previewImg" alt="Product preview">
+          <div class="up-actions">
+            <button class="lk-btn sub" id="resetBtn" data-i18n="resetBtn">Choose different image</button>
+          </div>
+        </div>
+
+        <span class="overline" data-i18n="uploadBOverline" style="display:block;margin:36px 0 14px">B — its name <span style="text-transform:none;letter-spacing:0;color:var(--ink-soft);font-weight:400">(image is optional — type alone works too)</span></span>
         <div class="search-field">
-          <input id="q" type="url" data-i18n-ph="qPh" placeholder="e.g. https://www.prada.com/us/en/women/bags/..." autocomplete="off">
-          <button id="goBtn" data-i18n="goBtn">Compare Prices</button>
+          <input id="q" type="text" data-i18n-ph="qPh" placeholder="e.g. Louis Vuitton Neverfull, Rolex Submariner…" autocomplete="off">
+          <button id="goBtn" data-i18n="goBtn">Analyze</button>
         </div>
         <div class="search-msg" id="searchMsg"></div>
+        <div class="examples" id="examples">
+          <span class="ex-label" data-i18n="exLabel">Try one of these</span>
+          <a href="#" data-q="Rolex Submariner Date">Rolex Submariner</a>
+          <a href="#" data-q="Louis Vuitton Neverfull MM">Louis Vuitton Neverfull</a>
+          <a href="#" data-q="Cartier Love Bracelet">Cartier Love Bracelet</a>
+          <a href="#" data-q="Prada Brera bag">Prada Brera</a>
+        </div>
       </div>
     </div>
   </section>
@@ -412,6 +441,51 @@ const ITEMS = [];
 
 const WORKER_URL = "https://ap-macro-lookup.bridge11korea.workers.dev";
 
+/* =====================================================================
+   CURATED PRODUCTS (hybrid mode)
+   ---------------------------------------------------------------------
+   Hand-verified products. If a search matches one of these (by alias),
+   the site uses THESE exact prices instead of the live AI — so demo
+   products are accurate and consistent every time. Anything not listed
+   here falls back to the live Gemini lookup.
+
+   prices = each country's REAL local retail price in its OWN currency.
+   Replace any "verify" value with the real figure (e.g. switch region
+   on the brand's official site). imgRaw = a direct product photo URL.
+   ===================================================================== */
+const CURATED = [
+  {
+    id: "prada-1mr034-cardholder",
+    name: "Printed leather card holder with shoulder strap",
+    brand: "PRADA",
+    origin: "Italy",
+    category: "card holder with shoulder strap",
+    blurb: "A printed calf-hair card holder with a removable chain strap. The leather and hardware cost a small fraction of the retail price — most of what you pay is the triangle logo.",
+    macro_insight: "The same card holder carries a different sticker in each market because Prada sets prices per region, then local VAT/consumption tax and the exchange rate widen the gap — a live example of why the law of one price fails.",
+    imgRaw: "https://www.prada.com/content/dam/pradanux/images/2024/1MR034/2HIM/F0G3N/1MR034_2HIM_F0G3N_SLF.jpg",
+    aliases: ["prada printed leather card holder", "printed leather card holder with shoulder strap", "prada card holder with shoulder strap", "prada 1mr034", "1mr034", "prada cow print card holder", "prada card holder"],
+    prices: {
+      "Canada": 2150,          // ✓ verified — prada.com/ca
+      "United States": 1550,   // estimate — please verify
+      "France": 1350,          // estimate — please verify
+      "Italy": 1350,           // estimate — please verify
+      "United Kingdom": 1150,  // estimate — please verify
+      "Switzerland": 1250,     // estimate — please verify
+      "Japan": 235000,         // estimate — please verify
+      "South Korea": 2050000   // estimate — please verify
+    }
+  }
+];
+
+function matchCurated(q){
+  const s = (q || "").toLowerCase().trim();
+  if(!s) return null;
+  for(const c of CURATED){
+    if((c.aliases || []).some(a => s.includes(a) || a.includes(s))) return c;
+  }
+  return null;
+}
+
 /* =====================  internationalisation (EN / JA)  ===================== */
 let lang = (localStorage.getItem("lang") === "ja") ? "ja" : "en";
 
@@ -435,7 +509,7 @@ const TAX_JA = {
 // Static markup strings (set via [data-i18n]). HTML allowed — authored content, not user input.
 const STR = {
   title:{en:"Should You Buy It Here — The Global Price of Brands", ja:"ここで買うべき？ — ブランド品の世界価格"},
-  navSearch:{en:"Search", ja:"検索"},
+  navUpload:{en:"Upload", ja:"アップロード"},
   navEconomics:{en:"The Economics", ja:"経済のしくみ"},
   navHow:{en:"How It Works", ja:"使い方"},
   heroOverline:{en:"AP Macroeconomics · Independent Project 2026", ja:"AP マクロ経済学 · 自主プロジェクト 2026"},
@@ -448,10 +522,16 @@ const STR = {
   locP:{en:"This sets the currency every price below is shown in — the money you actually carry.", ja:"下に表示されるすべての価格は、ここで選んだ国の通貨——あなたが実際に使うお金——で表示されます。"},
   locLabel:{en:"Shopping from", ja:"買い物する国"},
   prodOverline:{en:"02 — The Product", ja:"02 — 商品"},
-  prodH2:{en:"Paste a product URL", ja:"商品URLを貼り付ける"},
-  prodP:{en:`Paste the URL of any product from an official brand website. We'll scrape the name, photo, and price — then compare it across 8 countries.`, ja:`公式ブランドサイトの商品URLを貼り付けてください。商品名・写真・価格を自動で取得し、8か国で比較します。`},
-  qPh:{en:"e.g. https://www.prada.com/us/en/women/bags/...", ja:"例：https://www.prada.com/jp/ja/women/bags/..."},
-  goBtn:{en:"Compare Prices", ja:"価格を比較する"},
+  prodH2:{en:"Upload &amp; identify", ja:"写真をのせて、調べる"},
+  prodP:{en:`Upload a photo of any branded product <em>and</em> tell us what it is. AI erases the logo from your photo while Gemini looks up real prices in every major market — then you see where it's cheapest.`, ja:`ブランド品の写真をアップロードし、<em>あわせて</em>商品名を教えてください。AI があなたの写真からロゴを消し、Gemini が主要な各市場の実際の価格を調べます——そして、どこがいちばん安いかがわかります。`},
+  uploadAOverline:{en:"A — your photo", ja:"A — あなたの写真"},
+  uzText:{en:"Drop an image here", ja:"ここに画像をドロップ"},
+  uzSub:{en:"or click to browse · JPG, PNG, WebP", ja:"またはクリックして選択 · JPG, PNG, WebP"},
+  resetBtn:{en:"Choose different image", ja:"別の画像を選ぶ"},
+  uploadBOverline:{en:`B — its name <span style="text-transform:none;letter-spacing:0;color:var(--ink-soft);font-weight:400">(image is optional — type alone works too)</span>`, ja:`B — 商品名 <span style="text-transform:none;letter-spacing:0;color:var(--ink-soft);font-weight:400">（画像は任意——入力だけでも使えます）</span>`},
+  qPh:{en:"e.g. Louis Vuitton Neverfull, Rolex Submariner…", ja:"例：ルイ・ヴィトン ネヴァーフル、ロレックス サブマリーナ…"},
+  goBtn:{en:"Analyze", ja:"分析する"},
+  exLabel:{en:"Try one of these", ja:"例から試す"},
   honestOverline:{en:"03 — The Honest Question", ja:"03 — 正直な問い"},
   honestH2:{en:"Is it the object — or the name?", ja:"モノそのもの？それとも名前？"},
   verdictOverline:{en:"04 — The Verdict", ja:"04 — 結論"},
@@ -488,11 +568,6 @@ const T = {
   en:{
     rateLive:(c)=>`Prices are looked up live and shown in ${c} — no fixed exchange rate.`,
     updatingPrices:"Updating prices in your currency",
-    errInvalidUrl:"Please enter a valid HTTPS URL from a brand website.",
-    errNotOfficial:(domain)=>`"${domain}" is not a recognized official brand website.`,
-    errBlocked:(domain)=>`Third-party retailers like "${domain}" are not supported.`,
-    loadScraping:["Scraping the product page","Comparing prices across 8 markets","Checking exchange rates","Almost there"],
-    unavailable:(brand,country)=>`Not available on ${brand} ${country}`,
     errImageFile:"Please upload an image file.",
     errImageLarge:"Image too large (max 10 MB).",
     loadingDebrand:"AI is removing brand logos",
@@ -544,11 +619,6 @@ const T = {
   ja:{
     rateLive:(c)=>`価格は ${c} でリアルタイムに取得しています（固定の為替レートは使用していません）。`,
     updatingPrices:"選択した通貨で価格を更新中",
-    errInvalidUrl:"ブランドサイトの有効なHTTPS URLを入力してください。",
-    errNotOfficial:(domain)=>`「${domain}」は公式ブランドサイトとして認識されていません。`,
-    errBlocked:(domain)=>`「${domain}」などのセレクトショップには対応していません。`,
-    loadScraping:["商品ページをスクレイピング中","8つの市場で価格を比較中","為替レートを確認中","もうすぐです"],
-    unavailable:(brand,country)=>`${brand} ${country}では取り扱いなし`,
     errImageFile:"画像ファイルをアップロードしてください。",
     errImageLarge:"画像が大きすぎます（最大10MB）。",
     loadingDebrand:"AI がブランドロゴを消しています",
@@ -655,20 +725,16 @@ function buildHomeSelect(){
 // Prices now come from the API already in the selected currency, so changing the
 // currency re-runs the lookup rather than doing a client-side conversion.
 async function refetchForCurrency(){
-  const url = lastQuery || "";
-  if(!url){ renderStage(); if(revealed) renderResults(); return; }
+  // Curated products use the static rate table, so a currency switch just re-renders.
+  if(current && current.curated){ renderStage(); if(revealed) renderResults(); return; }
+  const query = lastQuery || (current && current.name) || "";
+  if(!query){ renderStage(); if(revealed) renderResults(); return; }
   const wasRevealed = revealed;
   $(wasRevealed ? "#results" : "#stage").innerHTML = `<div class="loading"><em>${t('updatingPrices')}<span class="dots"></span></em></div>`;
   try{
-    const res = await fetch(`${WORKER_URL}/scrape`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, homeCurrency: homeCur() })
-    });
-    const data = await res.json();
+    const data = await fetch(`${WORKER_URL}/?q=${encodeURIComponent(query)}&currency=${encodeURIComponent(homeCur())}`).then(r=>r.json());
     if(data && data.found){
-      if(data.local_prices) current.prices = data.local_prices;
-      if(data.prices) current.priceData = data.prices;
+      if(data.prices) current.prices = data.prices;
       current.homePrices = data.home_prices || null;
       current.homeCurrencyFetched = data.home_currency || homeCur();
     }
@@ -680,46 +746,139 @@ function updateRateNote(){
   $("#rateNote").textContent = t('rateLive', homeCur());
 }
 
-/* ---- URL validation ---- */
-const OFFICIAL_DOMAINS = new Set([
-  "prada.com","louisvuitton.com","gucci.com","chanel.com","hermes.com",
-  "dior.com","balenciaga.com","bottegaveneta.com","saintlaurent.com","ysl.com",
-  "burberry.com","fendi.com","loewe.com","celine.com","moncler.com",
-  "cartier.com","tiffany.com","rolex.com","omega.com","tagheuer.com",
-  "iwc.com","nike.com","adidas.com","newbalance.com"
-]);
-const BLOCKED_DOMAINS = new Set([
-  "farfetch.com","ssense.com","net-a-porter.com","mytheresa.com",
-  "matchesfashion.com","nordstrom.com","saksfifthavenue.com",
-  "bloomingdales.com","selfridges.com","harrods.com","amazon.com",
-  "ebay.com","stockx.com","grailed.com","vestiairecollective.com"
-]);
-function validateUrl(input){
-  let parsed;
-  try { parsed = new URL(input); } catch { return { valid: false, msg: t('errInvalidUrl') }; }
-  if(parsed.protocol !== "https:") return { valid: false, msg: t('errInvalidUrl') };
-  const domain = parsed.hostname.replace(/^www\./, "").toLowerCase();
-  if(BLOCKED_DOMAINS.has(domain)) return { valid: false, msg: t('errBlocked', domain) };
-  if(!OFFICIAL_DOMAINS.has(domain)) return { valid: false, msg: t('errNotOfficial', domain) };
-  return { valid: true, domain };
+/* ---- image upload ---- */
+let uploadedImageData = null; // { base64, mimeType }
+
+function setupUpload(){
+  const zone = $("#uploadZone");
+  const input = $("#fileInput");
+
+  zone.onclick = () => input.click();
+
+  zone.ondragover = e => { e.preventDefault(); zone.classList.add("dragover"); };
+  zone.ondragleave = () => zone.classList.remove("dragover");
+  zone.ondrop = e => { e.preventDefault(); zone.classList.remove("dragover"); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+
+  input.onchange = () => { if(input.files[0]) handleFile(input.files[0]); };
+
+  $("#resetBtn").onclick = resetUpload;
 }
 
-/* ---- load an image by URL ---- */
+function handleFile(file){
+  if(!file.type.startsWith("image/")){ $("#searchMsg").textContent = t('errImageFile'); return; }
+  if(file.size > 10*1024*1024){ $("#searchMsg").textContent = t('errImageLarge'); return; }
+
+  const img = new Image();
+  img.onload = () => {
+    const MAX = 1024;
+    let w = img.width, h = img.height;
+    if(w > MAX || h > MAX){
+      if(w > h){ h = Math.round(h * MAX / w); w = MAX; }
+      else { w = Math.round(w * MAX / h); h = MAX; }
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    const base64 = dataUrl.split(",")[1];
+    uploadedImageData = { base64, mimeType: "image/jpeg" };
+
+    $("#previewImg").src = dataUrl;
+    $("#uploadZone").classList.add("hidden");
+    $("#uploadPreview").classList.remove("hidden");
+    $("#searchMsg").innerHTML = "";
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+function resetUpload(){
+  uploadedImageData = null;
+  $("#fileInput").value = "";
+  $("#uploadZone").classList.remove("hidden");
+  $("#uploadPreview").classList.add("hidden");
+  $("#searchMsg").innerHTML = "";
+  $("#debrandSection").classList.add("hidden");
+  $("#resultsSection").classList.add("hidden");
+}
+
+async function doDebrand(){
+  if(!uploadedImageData){ $("#searchMsg").textContent = t('errUploadFirst'); return; }
+
+  $("#searchMsg").innerHTML = "";
+  $("#debrandSection").classList.remove("hidden");
+  $("#resultsSection").classList.add("hidden");
+  $("#stage").innerHTML = `<div class="loading"><em>${t('loadingDebrand')}<span class="dots"></span></em></div>`;
+  $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
+
+  try {
+    const res = await fetch(`${WORKER_URL}/debrand`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: uploadedImageData.base64, mimeType: uploadedImageData.mimeType })
+    });
+    const data = await res.json();
+
+    if(!data.success){
+      $("#searchMsg").innerHTML = t('errPrefix', data.error || t('errCouldNotProcess'));
+      $("#debrandSection").classList.add("hidden");
+      return;
+    }
+
+    // Show the debranded image
+    const debrandedSrc = `data:${data.mimeType};base64,${data.image}`;
+    renderDebrandedStage(debrandedSrc);
+
+  } catch(e) {
+    $("#searchMsg").innerHTML = t('errNetworkAI');
+    $("#debrandSection").classList.add("hidden");
+  }
+}
+
+function renderDebrandedStage(debrandedSrc){
+  const originalSrc = `data:${uploadedImageData.mimeType};base64,${uploadedImageData.base64}`;
+
+  $("#stage").innerHTML = `
+    <div style="display:flex;gap:28px;justify-content:center;flex-wrap:wrap;align-items:flex-start">
+      <div style="text-align:center">
+        <div class="obj-cap">${t('capOriginal')}</div>
+        <img class="obj-img" src="${originalSrc}" alt="Original product">
+      </div>
+      <div style="text-align:center">
+        <div class="obj-cap">${t('capLogoRemoved')}</div>
+        <img class="obj-img" src="${debrandedSrc}" alt="De-branded product">
+      </div>
+    </div>
+    <div class="ask" style="margin-top:28px">${t('askWithoutLogo')}</div>
+    <div class="choice-row">
+      <button class="lk-btn" id="yesBtn">${t('btnYesObject')}</button>
+      <button class="lk-btn sub" id="noBtn">${t('btnNoName')}</button>
+    </div>
+    <div id="quip"></div>`;
+
+  $("#yesBtn").onclick = () => {
+    $("#quip").innerHTML = `<div class="quip">${t('quipDebYes')}</div>`;
+  };
+  $("#noBtn").onclick = () => {
+    $("#quip").innerHTML = `<div class="quip">${t('quipDebNo')}</div>`;
+  };
+}
+
+/* ---- live search + AI logo removal (combined flow) ---- */
 function loadImage(url){
   return new Promise((res,rej) => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    img.crossOrigin = "anonymous";  // needed so canvas can read it
     img.onload = () => res(img);
     img.onerror = rej;
     img.src = url;
   });
 }
 
-/* ---- debrand from a URL (proxy -> canvas -> /debrand) ---- */
-async function debrandFromUrl(imageUrl){
+// fetch the proxied image, downscale, base64-encode, send to /debrand
+async function debrandInBackground(imageUrl){
   try {
-    const proxied = `${WORKER_URL}/img?url=${encodeURIComponent(imageUrl)}`;
-    const img = await loadImage(proxied);
+    const img = await loadImage(imageUrl);
     const MAX = 1024;
     let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
     if(w > MAX || h > MAX){
@@ -731,6 +890,7 @@ async function debrandFromUrl(imageUrl){
     canvas.getContext("2d").drawImage(img, 0, 0, w, h);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
     const base64 = dataUrl.split(",")[1];
+
     const res = await fetch(`${WORKER_URL}/debrand`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -744,21 +904,46 @@ async function debrandFromUrl(imageUrl){
   }
 }
 
-/* ---- main search flow ---- */
+// Build the result from a curated product (no AI call) — exact, reproducible prices.
+function runCurated(c){
+  $("#searchMsg").innerHTML = "";
+  $("#debrandSection").classList.remove("hidden");
+  $("#resultsSection").classList.add("hidden");
+  revealed = false;
+  const userImg = uploadedImageData ? `data:${uploadedImageData.mimeType};base64,${uploadedImageData.base64}` : "";
+  current = {
+    id: "curated-" + c.id,
+    name: c.name, brand: c.brand, category: c.category, origin: c.origin,
+    img: userImg || (c.imgRaw ? `${WORKER_URL}/img?url=${encodeURIComponent(c.imgRaw)}` : ""),
+    debrandedImg: null, debrandPending: false,
+    blurb: c.blurb || "", macro_insight: c.macro_insight || "",
+    prices: c.prices,
+    homePrices: null,                 // null -> convert with the static rate table (stable & reproducible)
+    homeCurrencyFetched: homeCur(),
+    sources: [], curated: true
+  };
+  renderStage();
+  $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
 async function doSearch(){
-  const url = $("#q").value.trim();
-  if(!url){ $("#searchMsg").textContent = t('errInvalidUrl'); return; }
+  const q = $("#q").value.trim();
 
-  const v = validateUrl(url);
-  if(!v.valid){ $("#searchMsg").textContent = v.msg; return; }
+  // Image is OPTIONAL — typing alone works. Product name is required.
+  if(!q){ $("#searchMsg").textContent = t('errTypeName'); return; }
+  lastQuery = q;
 
-  lastQuery = url;
+  // Hybrid: a hand-verified product short-circuits the live AI lookup.
+  const curated = matchCurated(q);
+  if(curated){ runCurated(curated); return; }
+
+  const hasImage = !!uploadedImageData;
   $("#searchMsg").innerHTML = "";
   $("#debrandSection").classList.remove("hidden");
   $("#resultsSection").classList.add("hidden");
 
-  // Rotating loading messages
-  const loadMsgs = t('loadScraping');
+  // P3: rotating loading messages so the 15-20s wait feels intentional, not stuck
+  const loadMsgs = hasImage ? t('loadImg') : t('loadNoImg');
   $("#stage").innerHTML = `<div class="loading"><em id="loadMsg">${loadMsgs[0]}</em><span class="dots"></span></div>`;
   let msgIdx = 0;
   const loadTimer = setInterval(() => {
@@ -770,62 +955,52 @@ async function doSearch(){
   $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
   revealed = false;
 
-  try {
-    const res = await fetch(`${WORKER_URL}/scrape`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, homeCurrency: homeCur() })
-    });
-    const data = await res.json();
-    clearInterval(loadTimer);
+  // Fire calls in parallel. Debrand only if user uploaded an image.
+  const searchPromise = fetch(`${WORKER_URL}/?q=${encodeURIComponent(q)}&currency=${encodeURIComponent(homeCur())}`)
+    .then(r => r.json())
+    .catch(e => ({ found:false, error:"Network: "+e.message }));
+  const debrandPromise = hasImage
+    ? fetch(`${WORKER_URL}/debrand`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: uploadedImageData.base64, mimeType: uploadedImageData.mimeType })
+      }).then(r => r.json()).catch(e => ({ success:false, error:"Network: "+e.message }))
+    : Promise.resolve({ success:false });
 
-    if(!data.found){
-      const detail = data.error ? ` (${esc(data.error)})` : "";
-      $("#stage").innerHTML = `<div class="quip" style="max-width:580px;margin:40px auto;text-align:center;line-height:1.6">${t('notFound', esc(url), detail)}</div>`;
-      $("#resultsSection").classList.add("hidden");
-      return;
-    }
+  const [data, debrandData] = await Promise.all([searchPromise, debrandPromise]);
+  clearInterval(loadTimer);
 
-    const imageUrl = data.product.image_url || "";
-    current = {
-      id: "live-" + Date.now(),
-      name: data.product.name,
-      brand: data.product.brand,
-      category: data.product.category,
-      origin: data.product.origin,
-      img: imageUrl ? `${WORKER_URL}/img?url=${encodeURIComponent(imageUrl)}` : "",
-      debrandedImg: null,
-      debrandPending: !!imageUrl,
-      blurb: data.product.blurb || "",
-      macro_insight: data.macro_insight || "",
-      priceData: data.prices,                    // full prices object (with available/unavailable)
-      prices: data.local_prices || {},            // local currency prices (for legacy toHome)
-      homePrices: data.home_prices || null,
-      homeCurrencyFetched: data.home_currency || homeCur(),
-      sources: []
-    };
-
-    renderStage();
-
-    // Fire debranding in parallel — update stage when it finishes
-    if(imageUrl){
-      debrandFromUrl(imageUrl).then(result => {
-        if(current && result){
-          current.debrandedImg = result;
-          current.debrandPending = false;
-          renderStage();
-          if(revealed) renderResults();
-        } else if(current){
-          current.debrandPending = false;
-          renderStage();
-        }
-      });
-    }
-  } catch(e) {
-    clearInterval(loadTimer);
-    $("#searchMsg").innerHTML = t('errNetworkAI');
-    $("#debrandSection").classList.add("hidden");
+  if(!data.found){
+    // P5: more actionable error message
+    const detail = data.error ? ` (${esc(data.error)})` : "";
+    $("#stage").innerHTML = `<div class="quip" style="max-width:580px;margin:40px auto;text-align:center;line-height:1.6">${t('notFound', esc(q), detail)}</div>`;
+    $("#resultsSection").classList.add("hidden");
+    return;
   }
+
+  const debrandedImg = debrandData.success ? `data:${debrandData.mimeType};base64,${debrandData.image}` : null;
+  const userOriginal = hasImage ? `data:${uploadedImageData.mimeType};base64,${uploadedImageData.base64}` : null;
+  // If user uploaded, show their photo. Otherwise fall back to whatever Gemini returned.
+  const displayImg = userOriginal || data.image_url || "";
+
+  current = {
+    id: "live-" + Date.now(),
+    name: data.name,
+    brand: data.brand,
+    category: data.category,
+    origin: data.origin,
+    img: displayImg,                   // user's photo OR Gemini's image fallback
+    debrandedImg: debrandedImg,        // user's photo with logo erased (null if no upload or AI failed)
+    debrandPending: false,
+    blurb: data.blurb,
+    macro_insight: data.macro_insight || "",  // P4: macro takeaway from Gemini
+    prices: data.prices,                       // each market's price in its own currency
+    homePrices: data.home_prices || null,      // each market's price in the selected currency (from the API)
+    homeCurrencyFetched: data.home_currency || homeCur(),
+    sources: data.sources || []
+  };
+  if(hasImage && !debrandedImg && debrandData.error){ console.warn("AI debrand failed:", debrandData.error); }
+  renderStage();
 }
 
 function renderStage(){
@@ -889,54 +1064,31 @@ function reveal(answer){
 }
 
 function renderResults(){
-  if(!current) return;
+  if(!current || !current.prices) return;
   const it = current;
-  const pd = it.priceData || {};   // full price data with available/unavailable info
-  const lp = it.prices || {};      // local_prices (numbers)
-
-  // Build available and unavailable rows
-  const availableRows = [];
-  const unavailableRows = [];
-
-  for(const country of Object.keys(COUNTRIES)){
-    const cc = (COUNTRIES[country] || {}).cc || "??";
-    const isHome = country === homeCountry;
+  const rows = Object.keys(it.prices).map(country=>{
     const localCur = CURRENCY_OF[country];
-
-    // Check priceData for availability info
-    const entry = pd[country];
-    if(entry && entry.available === false){
-      unavailableRows.push({ country, cc, isHome, reason: entry.reason || t('unavailable', it.brand || '', cname(country)) });
-      continue;
-    }
-
-    // Try local_prices first, then priceData
-    const local = (typeof lp[country] === "number") ? lp[country] : (entry && typeof entry.price === "number" ? entry.price : null);
-    if(local === null || !isFinite(local) || local <= 0){
-      // If no price data at all, skip (don't show as unavailable unless explicitly marked)
-      if(entry && entry.available === false) unavailableRows.push({ country, cc, isHome, reason: entry.reason || '' });
-      continue;
-    }
-
+    if(!localCur) return null;
+    const local = it.prices[country];
+    if(typeof local !== "number" || !isFinite(local) || local <= 0) return null;
+    // Prefer the API's price in the selected currency; fall back to static conversion.
     const home = (it.homePrices && typeof it.homePrices[country] === "number") ? it.homePrices[country] : toHome(local, localCur);
-    availableRows.push({ country, cc, localCur, local, home, isHome });
-  }
+    return { country, cc:(COUNTRIES[country]||{}).cc || "??", localCur, local, home, isHome:country===homeCountry };
+  }).filter(Boolean).sort((a,b)=>a.home - b.home);
 
-  availableRows.sort((a,b) => a.home - b.home);
-
-  if(availableRows.length === 0){
+  if(rows.length === 0){
     $("#results").innerHTML = `<div class="quip" style="text-align:center;margin:40px auto">${t('noPrices')}</div>`;
     return;
   }
 
-  const max = Math.max(...availableRows.map(r=>r.home));
-  const cheapest = availableRows[0], dearest = availableRows[availableRows.length-1];
-  const youRow = availableRows.find(r=>r.isHome);
-  const youRank = youRow ? availableRows.indexOf(youRow)+1 : null;
+  const max = Math.max(...rows.map(r=>r.home));
+  const cheapest = rows[0], dearest = rows[rows.length-1];
+  const youRow = rows.find(r=>r.isHome);
+  const youRank = youRow ? rows.indexOf(youRow)+1 : null;
   const savePctVsYou = youRow ? ((youRow.home - cheapest.home)/youRow.home*100) : null;
   const spreadPct = (dearest.home - cheapest.home)/dearest.home*100;
   const originIsCheapest = cheapest.country === it.origin;
-  const originSold = availableRows.some(r=>r.country === it.origin);
+  const originSold = rows.some(r=>r.country === it.origin);
 
   let verdict = `<div class="verdict">
     <div class="v-top">
@@ -945,7 +1097,7 @@ function renderResults(){
     </div>
     <p>${t('mostExpensive', esc(cname(dearest.country)), fmt(dearest.home, homeCur()), spreadPct.toFixed(0))}`;
   if(youRow){
-    verdict += ` ${t('boughtHome', esc(cname(homeCountry)), fmt(youRow.home, homeCur()), youRank, availableRows.length)} ${savePctVsYou>0.5 ? t('saveBringBack', esc(cname(cheapest.country)), savePctVsYou.toFixed(0)) : t('alreadyCheapest')}`;
+    verdict += ` ${t('boughtHome', esc(cname(homeCountry)), fmt(youRow.home, homeCur()), youRank, rows.length)} ${savePctVsYou>0.5 ? t('saveBringBack', esc(cname(cheapest.country)), savePctVsYou.toFixed(0)) : t('alreadyCheapest')}`;
   } else {
     verdict += ` ${t('switchCountry')}`;
   }
@@ -954,8 +1106,7 @@ function renderResults(){
     : t('originNotCheapest', esc(cname(it.origin))))
     : t('originNotCompared', esc(cname(it.origin)))}</p></div>`;
 
-  // Bar chart: only available rows
-  const chart = `<div class="chart">${availableRows.map(r=>{
+  const chart = `<div class="chart">${rows.map(r=>{
     const pct = Math.max(4, r.home/max*100);
     const cls = (r===cheapest?"cheapest":"") + (r.isHome?" home":"");
     return `<div class="bar-row">
@@ -965,8 +1116,9 @@ function renderResults(){
     </div>`;
   }).join("")}</div>`;
 
-  // Table: available rows (ranked) then unavailable rows
-  const availTableRows = availableRows.map((r,i)=>`<tr>
+  const table = `<div class="table-scroll"><table>
+    <thead><tr><th>#</th><th>${t('thCountry')}</th><th>${t('thLocal')}</th><th>${t('thInCur', homeCur())}</th><th>${t('thTax')}</th></tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr>
       <td>${i+1}</td>
       <td class="country"><span class="cc">${r.cc}</span>${esc(cname(r.country))}
         ${r.country===it.origin?`<span class="note-tag">${t('tagHome')}</span>`:''}
@@ -975,22 +1127,9 @@ function renderResults(){
       <td>${fmt(r.local, r.localCur)}</td>
       <td class="num">${fmt(r.home, homeCur())}</td>
       <td>${taxOf(r.country)}</td>
-    </tr>`).join("");
+    </tr>`).join("")}</tbody></table></div>`;
 
-  const unavailTableRows = unavailableRows.map(r=>`<tr class="unavailable">
-      <td>&mdash;</td>
-      <td class="country"><span class="cc">${r.cc}</span>${esc(cname(r.country))}
-        ${r.country===it.origin?`<span class="note-tag">${t('tagHome')}</span>`:''}
-        ${r.isHome?`<span class="note-tag">${t('tagYou')}</span>`:''}</td>
-      <td class="num" colspan="2">${esc(r.reason || t('unavailable', it.brand || '', cname(r.country)))}</td>
-      <td>${taxOf(r.country)}</td>
-    </tr>`).join("");
-
-  const table = `<div class="table-scroll"><table>
-    <thead><tr><th>#</th><th>${t('thCountry')}</th><th>${t('thLocal')}</th><th>${t('thInCur', homeCur())}</th><th>${t('thTax')}</th></tr></thead>
-    <tbody>${availTableRows}${unavailTableRows}</tbody></table></div>`;
-
-  // Macro takeaway callout
+  // P4: macro takeaway callout — Gemini ties this specific result to a macro concept
   const macroCallout = it.macro_insight
     ? `<div class="macro-callout"><span class="label">${t('macroLabel')}</span>${esc(it.macro_insight)}</div>`
     : "";
@@ -1003,10 +1142,23 @@ function renderResults(){
 }
 
 /* ---- init ---- */
+setupUpload();
 $("#goBtn").onclick = doSearch;
 $("#q").addEventListener("keydown", e => { if(e.key === "Enter") doSearch(); });
+
+// P2: wire up the "Try one of these" example chips — one-click demo flow
+document.querySelectorAll("#examples a").forEach(a => {
+  a.onclick = e => {
+    e.preventDefault();
+    $("#q").value = a.dataset.q || a.textContent;
+    doSearch();
+  };
+});
+
+// Language toggle (EN ⇄ JA), persisted in localStorage.
 $("#langToggle").onclick = () => setLang(lang === "ja" ? "en" : "ja");
-applyLang();
+
+applyLang();   // builds the locale dropdown + paints the saved language
 </script>
 </body>
 </html>

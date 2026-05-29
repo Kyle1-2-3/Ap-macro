@@ -1,10 +1,9 @@
 /* =============================================================================
    Cloudflare Worker — "Should You Buy It Here?" product lookup proxy
    -----------------------------------------------------------------------------
-   Endpoints:
-     GET  /img?url=<image url>  → Image proxy, bypasses hotlink protection
-     POST /debrand              → AI logo removal
-     POST /scrape               → Firecrawl + Gemini price scraper
+   Two endpoints:
+     GET /?q=<product name>   → Gemini lookup, returns JSON with product data
+     GET /img?url=<image url>  → Image proxy, bypasses hotlink protection
    ========================================================================== */
 
 const COUNTRIES = ["United States","Canada","France","Italy","United Kingdom","Switzerland","Japan","South Korea"];
@@ -24,459 +23,6 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-/* ---------- Brand config ---------- */
-
-const OFFICIAL_DOMAINS = new Set([
-  "prada.com","louisvuitton.com","gucci.com","chanel.com","hermes.com",
-  "dior.com","balenciaga.com","bottegaveneta.com","saintlaurent.com","ysl.com",
-  "burberry.com","fendi.com","loewe.com","celine.com","moncler.com",
-  "cartier.com","tiffany.com","rolex.com","omega.com","tagheuer.com",
-  "iwc.com","nike.com","adidas.com","newbalance.com",
-]);
-
-const BLOCKED_DOMAINS = new Set([
-  "farfetch.com","ssense.com","net-a-porter.com","mytheresa.com",
-  "matchesfashion.com","nordstrom.com","saksfifthavenue.com",
-  "bloomingdales.com","selfridges.com","harrods.com",
-  "amazon.com","ebay.com","stockx.com","grailed.com","vestiairecollective.com",
-]);
-
-const BRAND_MAP = {
-  "prada.com": {
-    pathRegex: /\/(?:[a-z]{2})\/(?:[a-z]{2})\/(.*)/i,
-    countries: {
-      "United States":   "https://www.prada.com/us/en/{path}",
-      "Canada":          "https://www.prada.com/ca/en/{path}",
-      "France":          "https://www.prada.com/fr/fr/{path}",
-      "Italy":           "https://www.prada.com/it/it/{path}",
-      "United Kingdom":  "https://www.prada.com/gb/en/{path}",
-      "Switzerland":     "https://www.prada.com/ch/en/{path}",
-      "Japan":           "https://www.prada.com/jp/ja/{path}",
-      "South Korea":     "https://www.prada.com/kr/ko/{path}",
-    },
-  },
-  "louisvuitton.com": {
-    pathRegex: /\/(?:[a-z]{2}-[a-z]{2})\/(.*)/i,
-    countries: {
-      "United States":   "https://us.louisvuitton.com/eng-us/{path}",
-      "Canada":          "https://ca.louisvuitton.com/eng-ca/{path}",
-      "France":          "https://fr.louisvuitton.com/fra-fr/{path}",
-      "Italy":           "https://it.louisvuitton.com/ita-it/{path}",
-      "United Kingdom":  "https://uk.louisvuitton.com/eng-gb/{path}",
-      "Switzerland":     "https://ch.louisvuitton.com/eng-ch/{path}",
-      "Japan":           "https://jp.louisvuitton.com/jpn-jp/{path}",
-      "South Korea":     "https://kr.louisvuitton.com/kor-kr/{path}",
-    },
-  },
-  "gucci.com": {
-    pathRegex: /\/(?:[a-z]{2}-[a-z]{2})\/(.*)/i,
-    countries: {
-      "United States":   "https://www.gucci.com/us/en/{path}",
-      "Canada":          "https://www.gucci.com/ca/en/{path}",
-      "France":          "https://www.gucci.com/fr/fr/{path}",
-      "Italy":           "https://www.gucci.com/it/it/{path}",
-      "United Kingdom":  "https://www.gucci.com/uk/en/{path}",
-      "Switzerland":     "https://www.gucci.com/ch/en/{path}",
-      "Japan":           "https://www.gucci.com/jp/ja/{path}",
-      "South Korea":     "https://www.gucci.com/kr/ko/{path}",
-    },
-  },
-  "nike.com": {
-    pathRegex: /\/(?:[a-z]+\/)?t\/(.*)/i,
-    countries: {
-      "United States":   "https://www.nike.com/t/{path}",
-      "Canada":          "https://www.nike.com/ca/t/{path}",
-      "France":          "https://www.nike.com/fr/t/{path}",
-      "Italy":           "https://www.nike.com/it/t/{path}",
-      "United Kingdom":  "https://www.nike.com/gb/t/{path}",
-      "Switzerland":     "https://www.nike.com/ch/t/{path}",
-      "Japan":           "https://www.nike.com/jp/t/{path}",
-      "South Korea":     "https://www.nike.com/kr/t/{path}",
-    },
-  },
-  "burberry.com": {
-    pathRegex: /\/(?:[a-z]{2}-[a-z]{2})\/(.*)/i,
-    countries: {
-      "United States":   "https://us.burberry.com/en-us/{path}",
-      "Canada":          "https://ca.burberry.com/en-ca/{path}",
-      "France":          "https://fr.burberry.com/fr-fr/{path}",
-      "Italy":           "https://it.burberry.com/it-it/{path}",
-      "United Kingdom":  "https://uk.burberry.com/en-gb/{path}",
-      "Switzerland":     "https://ch.burberry.com/en-ch/{path}",
-      "Japan":           "https://jp.burberry.com/ja-jp/{path}",
-      "South Korea":     "https://kr.burberry.com/ko-kr/{path}",
-    },
-  },
-  "adidas.com": {
-    pathRegex: /\/(?:[a-z]{2})\/(.*)/i,
-    countries: {
-      "United States":   "https://www.adidas.com/us/{path}",
-      "Canada":          "https://www.adidas.ca/en/{path}",
-      "France":          "https://www.adidas.fr/fr/{path}",
-      "Italy":           "https://www.adidas.it/it/{path}",
-      "United Kingdom":  "https://www.adidas.co.uk/en/{path}",
-      "Switzerland":     "https://www.adidas.ch/en/{path}",
-      "Japan":           "https://www.adidas.jp/ja/{path}",
-      "South Korea":     "https://www.adidas.co.kr/ko/{path}",
-    },
-  },
-};
-
-/* ---------- Brand helpers ---------- */
-
-function bareDomain(hostname) {
-  return hostname.replace(/^www\./i, "").toLowerCase();
-}
-
-function validateBrandUrl(urlStr) {
-  let parsed;
-  try { parsed = new URL(urlStr); } catch {
-    return { valid: false, domain: null, rejected: true, reason: "Invalid URL" };
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return { valid: false, domain: null, rejected: true, reason: "URL must be http(s)" };
-  }
-  const domain = bareDomain(parsed.hostname);
-  if (BLOCKED_DOMAINS.has(domain)) {
-    return { valid: false, domain, rejected: true, reason: `Third-party retailer (${domain}) — please use the official brand URL` };
-  }
-  if (!OFFICIAL_DOMAINS.has(domain)) {
-    return { valid: false, domain, rejected: true, reason: `Domain ${domain} is not a recognized official brand site` };
-  }
-  return { valid: true, domain, rejected: false, reason: null };
-}
-
-function buildCountryUrls(inputUrl) {
-  let parsed;
-  try { parsed = new URL(inputUrl); } catch { return null; }
-  const domain = bareDomain(parsed.hostname);
-  const brand = BRAND_MAP[domain];
-  if (!brand) return null;
-  const m = parsed.pathname.match(brand.pathRegex);
-  if (!m || !m[1]) return null;
-  const productPath = m[1];
-  const urls = {};
-  for (const [country, template] of Object.entries(brand.countries)) {
-    urls[country] = template.replace("{path}", productPath);
-  }
-  return urls;
-}
-
-/* ---------- Firecrawl + Gemini helpers ---------- */
-
-async function firecrawlScrape(url, apiKey) {
-  try {
-    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        url,
-        formats: ["markdown"],
-        onlyMainContent: true,
-        waitFor: 5000,
-      }),
-    });
-    if (!res.ok) {
-      const t = await res.text();
-      return { ok: false, error: `Firecrawl ${res.status}: ${t.slice(0, 200)}` };
-    }
-    const d = await res.json();
-    if (!d.success) return { ok: false, error: d.error || "Firecrawl returned success=false" };
-    return {
-      ok: true,
-      markdown: d.data?.markdown || "",
-      metadata: d.data?.metadata || {},
-    };
-  } catch (e) {
-    return { ok: false, error: "Firecrawl fetch error: " + e.message };
-  }
-}
-
-function isProductPage(scrapeResult, originalUrl) {
-  if (!scrapeResult.ok) return false;
-  // Check if redirected to homepage (short path vs long source path)
-  const finalUrl = scrapeResult.metadata?.sourceURL || scrapeResult.metadata?.url || "";
-  if (finalUrl) {
-    try {
-      const orig = new URL(originalUrl);
-      const final = new URL(finalUrl);
-      const origSegments = orig.pathname.replace(/\/$/, "").split("/").filter(Boolean).length;
-      const finalSegments = final.pathname.replace(/\/$/, "").split("/").filter(Boolean).length;
-      if (origSegments >= 3 && finalSegments <= 1) return false; // redirected to homepage
-    } catch { /* ignore parse errors */ }
-  }
-  // Check for price pattern in markdown
-  const md = scrapeResult.markdown || "";
-  const hasPrice = /(?:\$|€|£|¥|₩|CHF|USD|EUR|GBP|JPY|KRW)\s*[\d,.]+|[\d,.]+\s*(?:\$|€|£|¥|₩|CHF|USD|EUR|GBP|JPY|KRW)/i.test(md);
-  return hasPrice;
-}
-
-async function geminiExtractProduct(markdown, mode, geminiKey, context) {
-  const schema = mode === "full"
-    ? `{ "name": "...", "brand": "...", "price": <number>, "currency": "XXX", "image_url": "...", "origin": "...", "category": "...", "blurb": "..." }`
-    : `{ "price": <number>, "currency": "XXX" }`;
-
-  const contextLine = context ? `\nContext: ${context}` : "";
-  const prompt = [
-    `Extract product information from this webpage markdown. Return ONLY a JSON object matching this schema:`,
-    schema,
-    `Rules: price must be a plain number (no symbols/separators). currency is the 3-letter ISO code.${contextLine}`,
-    `If no product/price is found, return { "price": null, "currency": null }`,
-    ``,
-    `--- MARKDOWN ---`,
-    markdown.slice(0, 15000),
-  ].join("\n");
-
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 2048 },
-        }),
-      }
-    );
-    if (!res.ok) return null;
-    const d = await res.json();
-    const text = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-    return extractJson(text);
-  } catch {
-    return null;
-  }
-}
-
-async function geminiSearchPrice(brand, productName, country, geminiKey) {
-  const currency = CURRENCY_OF[country];
-  const prompt = [
-    `Find the current retail price of "${productName}" by ${brand} in ${country}.`,
-    `Search the brand's official ${country} website or authorized retailers.`,
-    `Return ONLY a JSON object: { "price": <number>, "currency": "${currency}", "found": true }`,
-    `If you cannot find the price, return { "price": null, "currency": "${currency}", "found": false }`,
-    `Price must be a plain number in ${currency}, no symbols or separators.`,
-  ].join("\n");
-
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          tools: [{ google_search: {} }],
-          generationConfig: { temperature: 0, maxOutputTokens: 1024 },
-        }),
-      }
-    );
-    if (!res.ok) return { price: null, currency, found: false };
-    const d = await res.json();
-    const text = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-    const parsed = extractJson(text);
-    if (parsed && typeof parsed.price === "number" && parsed.price > 0) {
-      return { price: parsed.price, currency: parsed.currency || currency, found: true };
-    }
-    return { price: null, currency, found: false };
-  } catch {
-    return { price: null, currency, found: false };
-  }
-}
-
-/* ---------- POST /scrape handler ---------- */
-
-async function handleScrape(request, env, url) {
-  let body;
-  try { body = await request.json(); } catch {
-    return json({ found: false, error: "Invalid JSON body" }, 400);
-  }
-
-  const inputUrl = (body.url || "").trim();
-  const homeCurrency = (body.homeCurrency || "USD").trim().toUpperCase();
-  if (!inputUrl) return json({ found: false, error: "Missing 'url' in request body" }, 400);
-  if (!VALID_CURRENCIES.includes(homeCurrency)) {
-    return json({ found: false, error: `Invalid homeCurrency: ${homeCurrency}` }, 400);
-  }
-
-  // Validate URL
-  const validation = validateBrandUrl(inputUrl);
-  if (!validation.valid) {
-    return json({ found: false, error: validation.reason }, 400);
-  }
-
-  const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
-  const FIRECRAWL_KEY = env.FIRECRAWL_API_KEY || "";
-
-  // Step 1: Scrape the input URL to identify the product
-  let product = null;
-  let inputScrape = null;
-
-  if (FIRECRAWL_KEY) {
-    inputScrape = await firecrawlScrape(inputUrl, FIRECRAWL_KEY);
-    if (inputScrape.ok && isProductPage(inputScrape, inputUrl)) {
-      product = await geminiExtractProduct(inputScrape.markdown, "full", GEMINI_KEY, `Source URL: ${inputUrl}`);
-    }
-  }
-
-  // Fallback: use Gemini + Google Search to identify the product from URL
-  if (!product || !product.name) {
-    const fallbackPrompt = [
-      `Look at this product URL and identify the product: ${inputUrl}`,
-      `Search the web to find full details about this product.`,
-      `Return ONLY a JSON object:`,
-      `{ "name": "full product name", "brand": "BRAND", "origin": "country of brand origin", "category": "short noun phrase", "blurb": "one sentence about the product", "image_url": "direct https image URL" }`,
-    ].join("\n");
-
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: fallbackPrompt }] }],
-            tools: [{ google_search: {} }],
-            generationConfig: { temperature: 0, maxOutputTokens: 2048 },
-          }),
-        }
-      );
-      if (res.ok) {
-        const d = await res.json();
-        const text = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-        const parsed = extractJson(text);
-        if (parsed && parsed.name) {
-          product = { ...product, ...parsed };
-        }
-      }
-    } catch { /* continue without product info */ }
-  }
-
-  if (!product || !product.name) {
-    return json({ found: false, error: "Could not identify the product from the given URL" }, 200);
-  }
-
-  // Step 2: Build country URLs
-  const countryUrls = buildCountryUrls(inputUrl);
-
-  // Step 3: Fetch prices for each of the 8 countries in parallel
-  const ratesPromise = getRates(homeCurrency);
-
-  const priceResults = await Promise.all(
-    COUNTRIES.map(async (country) => {
-      const currency = CURRENCY_OF[country];
-      let price = null;
-      let priceCurrency = currency;
-
-      // Try Firecrawl on country-specific URL first
-      if (FIRECRAWL_KEY && countryUrls && countryUrls[country]) {
-        const scrape = await firecrawlScrape(countryUrls[country], FIRECRAWL_KEY);
-        if (scrape.ok && isProductPage(scrape, countryUrls[country])) {
-          const extracted = await geminiExtractProduct(
-            scrape.markdown, "price", GEMINI_KEY,
-            `Product: ${product.name} by ${product.brand}. Country: ${country}. Expected currency: ${currency}`
-          );
-          if (extracted && typeof extracted.price === "number" && extracted.price > 0) {
-            price = extracted.price;
-            priceCurrency = extracted.currency || currency;
-          }
-        }
-      }
-
-      // Fallback: Gemini + Google Search
-      if (price === null) {
-        const searchResult = await geminiSearchPrice(product.brand, product.name, country, GEMINI_KEY);
-        if (searchResult.found) {
-          price = searchResult.price;
-          priceCurrency = searchResult.currency || currency;
-        }
-      }
-
-      return { country, price, currency: priceCurrency };
-    })
-  );
-
-  // Step 4: Assemble price maps
-  const prices = {};
-  const localPrices = {};
-  for (const r of priceResults) {
-    if (r.price !== null) {
-      prices[r.country] = { price: r.price, currency: r.currency, available: true };
-      localPrices[r.country] = r.price;
-    } else {
-      prices[r.country] = { available: false, reason: "Price not found" };
-    }
-  }
-
-  // Step 5: Convert to home currency
-  const rates = (await ratesPromise) || fallbackRates(homeCurrency);
-  const homePrices = {};
-  for (const [country, p] of Object.entries(prices)) {
-    if (p.available) {
-      const rate = rates[p.currency];
-      if (typeof rate === "number" && rate > 0) {
-        homePrices[country] = Math.round(p.price / rate);
-      }
-    }
-  }
-
-  // Step 6: Generate macro insight
-  let macroInsight = "";
-  try {
-    const cheapest = Object.entries(homePrices).sort((a, b) => a[1] - b[1])[0];
-    const expensive = Object.entries(homePrices).sort((a, b) => b[1] - a[1])[0];
-    const insightPrompt = [
-      `Product: ${product.name} by ${product.brand} (origin: ${product.origin || "unknown"}).`,
-      `Prices converted to ${homeCurrency}: ${JSON.stringify(homePrices)}.`,
-      `Cheapest: ${cheapest?.[0]}. Most expensive: ${expensive?.[0]}.`,
-      `Write ONE concise sentence (max 35 words) tying this to ONE AP Macroeconomics concept:`,
-      `exchange rates / currency depreciation, purchasing power parity, tariffs & VAT, net exports / shopping tourism, or home-country origin advantage.`,
-      `Be specific about which country is cheapest and WHY. Return ONLY the sentence, no JSON.`,
-    ].join(" ");
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: insightPrompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 256 },
-        }),
-      }
-    );
-    if (res.ok) {
-      const d = await res.json();
-      macroInsight = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
-    }
-  } catch { /* insight is optional */ }
-
-  // Proxy product image
-  const rawImg = cleanImageUrl(product.image_url);
-  const proxyImg = rawImg ? `${url.origin}/img?url=${encodeURIComponent(rawImg)}` : "";
-
-  return json({
-    found: true,
-    product: {
-      name: str(product.name),
-      brand: (str(product.brand) || "").toUpperCase() || "UNKNOWN BRAND",
-      origin: str(product.origin) || "unknown",
-      category: str(product.category) || "product",
-      image_url: proxyImg,
-      blurb: str(product.blurb) || "",
-    },
-    prices,
-    local_prices: localPrices,
-    home_prices: homePrices,
-    home_currency: homeCurrency,
-    fx_date: rates.__date || null,
-    macro_insight: macroInsight,
-  }, 200);
-}
-
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -493,12 +39,86 @@ export default {
       return handleDebrand(request, env);
     }
 
-    // Product scraping endpoint
-    if (url.pathname === "/scrape" && request.method === "POST") {
-      return handleScrape(request, env, url);
+    // Product lookup endpoint
+    const q = (url.searchParams.get("q") || "").trim();
+    if (!q) return json({ found: false, error: "Add ?q=<product name>" }, 400);
+    if (q.length > 120) return json({ found: false, error: "Query too long" }, 400);
+
+    // The display currency the user picked on the site (defaults to USD).
+    let displayCur = (url.searchParams.get("currency") || "USD").trim().toUpperCase();
+    if (!VALID_CURRENCIES.includes(displayCur)) displayCur = "USD";
+
+    // Fetch real, current exchange rates in parallel with the Gemini lookup.
+    const ratesPromise = getRates(displayCur);
+
+    const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
+    const prompt = buildPrompt(q, displayCur);
+
+    let geminiRes;
+    try {
+      geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            tools: [{ google_search: {} }],
+            generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+          }),
+        }
+      );
+    } catch (e) {
+      return json({ found: false, error: "Could not reach Gemini: " + e.message }, 502);
     }
 
-    return json({ error: "Not found. Use POST /scrape, GET /img, or POST /debrand." }, 404);
+    if (!geminiRes.ok) {
+      const t = await geminiRes.text();
+      return json({ found: false, error: `Gemini API error ${geminiRes.status}`, detail: t.slice(0, 400) }, 502);
+    }
+
+    const data = await geminiRes.json();
+    const cand = data?.candidates?.[0];
+    const text = (cand?.content?.parts || []).map(p => p.text || "").join("\n");
+    const sources = (cand?.groundingMetadata?.groundingChunks || [])
+      .map(c => c?.web?.uri).filter(Boolean).slice(0, 6);
+
+    const parsed = extractJson(text);
+    if (!parsed) return json({ found: false, error: "Gemini did not return parseable data", raw: text.slice(0, 400) }, 200);
+
+    // Convert each market's local price to the display currency using REAL current rates.
+    const rates = (await ratesPromise) || fallbackRates(displayCur);
+    const prices = {};       // each market's price in its OWN currency
+    const homePrices = {};   // each market's price converted to the user's display currency
+    for (const c of COUNTRIES) {
+      const v = parsed.prices?.[c];
+      if (typeof v !== "number" || !isFinite(v) || v <= 0) continue;
+      prices[c] = v;
+      const rate = rates[CURRENCY_OF[c]];
+      if (typeof rate === "number" && rate > 0) homePrices[c] = Math.round(v / rate);
+    }
+
+    // Build proxied image URL so the browser can actually load it
+    const rawImg = cleanImageUrl(parsed.image_url);
+    const proxyImg = rawImg ? `${url.origin}/img?url=${encodeURIComponent(rawImg)}` : "";
+
+    return json({
+      found: parsed.found !== false && Object.keys(prices).length >= 2,
+      name: str(parsed.name) || q,
+      brand: (str(parsed.brand) || "").toUpperCase() || "UNKNOWN BRAND",
+      origin: str(parsed.origin) || "unknown",
+      category: str(parsed.category) || "product",
+      blurb: str(parsed.blurb) || "",
+      macro_insight: str(parsed.macro_insight) || "",
+      image_url: proxyImg,
+      prices,
+      home_prices: homePrices,
+      home_currency: displayCur,
+      fx_date: rates.__date || null,
+      currencies: CURRENCY_OF,
+      sources,
+      model: MODEL,
+    }, 200);
   },
 };
 
@@ -596,6 +216,35 @@ async function handleDebrand(request, env) {
     image: img.data,
     mimeType: img.mimeType || img.mime_type || "image/png",
   }, 200);
+}
+
+function buildPrompt(q, displayCur) {
+  return [
+    `You are a meticulous research assistant. Use Google Search to find current, real information about this product: "${q}".`,
+    `Identify the single specific product the user most likely means (a real, currently-sold item).`,
+    `Return ONLY a JSON object — no markdown fences, no commentary before or after. Schema:`,
+    `{`,
+    `  "found": true | false,`,
+    `  "name": "full product name as the brand calls it",`,
+    `  "brand": "BRAND NAME",`,
+    `  "origin": "country where the brand/house is based (e.g. Italy for Gucci, France for Louis Vuitton, Switzerland for Rolex)",`,
+    `  "category": "short noun phrase, e.g. handbag / watch / pair of sneakers / belt",`,
+    `  "blurb": "one sentence: what it is, and roughly how its production cost compares to its retail price (qualitative is fine)",`,
+    `  "prices": {            // each market's REAL current retail price in that country's OWN currency`,
+    `    "United States": <number, in US dollars>,`,
+    `    "Canada": <number, in Canadian dollars>,`,
+    `    "France": <number, in euros>,`,
+    `    "Italy": <number, in euros>,`,
+    `    "United Kingdom": <number, in British pounds>,`,
+    `    "Switzerland": <number, in Swiss francs>,`,
+    `    "Japan": <number, in Japanese yen>,`,
+    `    "South Korea": <number, in South Korean won>`,
+    `  },`,
+    `  "image_url": "a direct URL to a clean product photo (https, ending in .jpg/.png/.webp). Strongly prefer Wikimedia Commons or Wikipedia images. Otherwise use official brand website images or well-known retail sites.",`,
+    `  "macro_insight": "ONE concise sentence (≤ 35 words) tying THIS specific result to ONE AP Macroeconomics concept — pick the most relevant from: exchange rates / currency depreciation, purchasing power parity / law of one price, tariffs & VAT / import duties, net exports / shopping tourism, or home-country origin advantage. Be specific about which country is cheapest and WHY (e.g. 'Switzerland is cheapest because its 8.1% VAT is the lowest in this set AND it's the brand's home country — origin advantage amplified by low tax.')."`,
+    `}`,
+    `Rules: Return a price for EVERY one of the eight countries (never null, 0, or "N/A"), each in that country's OWN local currency. Do NOT convert anything — currency conversion is handled separately with live exchange rates, so just give the real local sticker price. Luxury brands set DIFFERENT prices per region, so reflect the GENUINE regional differences from the brand's official local pricing (e.g. European and Japanese list prices are often lower than North America; Switzerland's VAT is low) — do NOT make the markets identical or copy one figure across countries. Prefer the brand's own country websites or reputable local retailers. If a market's exact price isn't published, estimate it from the brand's known regional pricing pattern. Plain numbers only: no currency symbols, no thousands separators. Only set "found": false if you cannot identify the product at all.`,
+  ].join("\n");
 }
 
 function extractJson(text) {
