@@ -7,6 +7,8 @@
      POST /scrape               → Firecrawl + Gemini price scraper
    ========================================================================== */
 
+import { scrapeAll } from "./scrape-core.mjs";
+
 const COUNTRIES = ["United States","Canada","France","Italy","United Kingdom","Switzerland","Japan","South Korea"];
 const VALID_CURRENCIES = ["USD","CAD","EUR","GBP","CHF","JPY","KRW"];
 const CURRENCY_OF = {
@@ -348,7 +350,7 @@ async function handleScrape(request, env, url) {
     return json({ found: false, error: "Invalid JSON body" }, 400);
   }
 
-  // Strip tracking params
+  // Strip tracking params from the pasted URL.
   let inputUrl = (body.url || "").trim();
   try {
     const u = new URL(inputUrl);
@@ -357,234 +359,101 @@ async function handleScrape(request, env, url) {
     }
     inputUrl = u.toString();
   } catch { /* leave as-is */ }
-  const homeCurrency = (body.homeCurrency || "USD").trim().toUpperCase();
+
+  const homeCurrency = (body.homeCurrency || body.currency || "USD").trim().toUpperCase();
   if (!inputUrl) return json({ found: false, error: "Missing 'url' in request body" }, 400);
   if (!VALID_CURRENCIES.includes(homeCurrency)) {
     return json({ found: false, error: `Invalid homeCurrency: ${homeCurrency}` }, 400);
   }
 
-  const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
+  // Reject obvious resellers/marketplaces (official-site-only, per the design).
+  const pre = preValidateUrl(inputUrl);
+  if (!pre.valid) return json({ found: false, error: pre.reason }, 400);
+
   const FIRECRAWL_KEY = env.FIRECRAWL_API_KEY || "";
+  if (!FIRECRAWL_KEY) return json({ found: false, error: "Server missing FIRECRAWL_API_KEY secret" }, 500);
 
-  // Validate URL
-  const validation = await validateOfficialSite(inputUrl, GEMINI_KEY);
-  if (!validation.valid) {
-    return json({ found: false, error: validation.reason }, 400);
-  }
+  // 24h cache (Cloudflare Cache API; guarded so node tests still run).
+  const cache = (typeof caches !== "undefined" && caches.default) ? caches.default : null;
+  const cacheKey = `https://cache.scrape/?u=${encodeURIComponent(inputUrl)}&c=${homeCurrency}`;
+  if (cache) { const hit = await cache.match(cacheKey); if (hit) return hit; }
 
-  // Step 1: Identify the product using Firecrawl Search + Gemini
-  let product = null;
-
-  if (FIRECRAWL_KEY) {
-    try {
-      const searchRes = await fetch("https://api.firecrawl.dev/v1/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${FIRECRAWL_KEY}`,
-        },
-        body: JSON.stringify({ query: inputUrl, limit: 3 }),
-      });
-      if (searchRes.ok) {
-        const searchData = await searchRes.json();
-        if (searchData.success && searchData.data && searchData.data.length > 0) {
-          const snippets = searchData.data.map(r => {
-            const content = r.markdown || r.description || "";
-            return `Title: ${r.title || ""}\nURL: ${r.url || ""}\nContent: ${content.slice(0, 800)}`;
-          }).join("\n---\n");
-
-          const idPrompt = [
-            `From these search results, identify the product at this URL: ${inputUrl}`,
-            `Return ONLY a JSON object:`,
-            `{ "name": "full product name (include size if applicable)", "brand": "BRAND", "origin": "country of brand origin", "category": "short noun phrase", "blurb": "one sentence about the product", "image_url": "direct https image URL or null" }`,
-            ``,
-            `--- SEARCH RESULTS ---`,
-            snippets,
-          ].join("\n");
-
-          const gemRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ role: "user", parts: [{ text: idPrompt }] }],
-                generationConfig: { temperature: 0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
-              }),
-            }
-          );
-          if (gemRes.ok) {
-            const gemData = await gemRes.json();
-            const text = (gemData?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-            const parsed = extractJson(text);
-            if (parsed && parsed.name) product = parsed;
-          }
-        }
-      }
-    } catch { /* continue to Gemini fallback */ }
-  }
-
-  // Fallback: Gemini + Google Search
-  if (!product || !product.name) {
-    const fallbackPrompt = [
-      `Look at this product URL and identify the product: ${inputUrl}`,
-      `Search the web to find full details about this product.`,
-      `Return ONLY a JSON object:`,
-      `{ "name": "full product name", "brand": "BRAND", "origin": "country of brand origin", "category": "short noun phrase", "blurb": "one sentence about the product", "image_url": "direct https image URL" }`,
-    ].join("\n");
-
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: fallbackPrompt }] }],
-            tools: [{ google_search: {} }],
-            generationConfig: { temperature: 0, maxOutputTokens: 2048 },
-          }),
-        }
-      );
-      if (res.ok) {
-        const d = await res.json();
-        const text = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-        const parsed = extractJson(text);
-        if (parsed && parsed.name) {
-          product = { ...product, ...parsed };
-        }
-      }
-    } catch { /* continue */ }
-  }
-
-  if (!product || !product.name) {
-    return json({ found: false, error: "Could not identify the product from the given URL" }, 200);
-  }
-
-  // Step 2: Fetch prices
+  // Core: scrape all 8 official country pages directly, verify, never fake.
   const ratesPromise = getRates(homeCurrency);
-  const priceResults = [];
-
-  if (FIRECRAWL_KEY) {
-    const batches = [];
-    for (let i = 0; i < COUNTRIES.length; i += 4) {
-      batches.push(COUNTRIES.slice(i, i + 4));
-    }
-    for (const batch of batches) {
-      const batchResults = await Promise.all(
-        batch.map(async (country) => {
-          const currency = CURRENCY_OF[country];
-          try {
-            const siteFilter = buildSiteFilter(inputUrl, country);
-            const result = await firecrawlSearchPrice(
-              product.brand, product.name, country, siteFilter, FIRECRAWL_KEY, GEMINI_KEY
-            );
-            if (result.found) {
-              return { country, price: result.price, currency: result.currency || currency, source: "firecrawl-search" };
-            }
-          } catch { /* continue */ }
-          return { country, price: null, currency };
-        })
-      );
-      priceResults.push(...batchResults);
-    }
-  } else {
-    for (const country of COUNTRIES) {
-      priceResults.push({ country, price: null, currency: CURRENCY_OF[country] });
-    }
+  const core = await scrapeAll(inputUrl, FIRECRAWL_KEY);
+  if (!core.found) {
+    return json({ found: false, error: core.error || "Could not read official prices for that link", failed: core.failed || [] }, 200);
   }
 
-  // Tier 2: Gemini batch for missing countries
-  const missingCountries = priceResults.filter(r => r.price === null).map(r => r.country);
-  if (missingCountries.length > 0) {
-    const batchResults = await geminiBatchSearchPrices(product.brand, product.name, missingCountries, GEMINI_KEY);
-    for (const country of missingCountries) {
-      const br = batchResults[country];
-      if (br && br.found) {
-        const idx = priceResults.findIndex(r => r.country === country);
-        if (idx !== -1) {
-          priceResults[idx] = { country, price: br.price, currency: br.currency, source: "gemini-search" };
-        }
-      }
-    }
-  }
-
-  // Step 3: Assemble price maps
-  const prices = {};
-  const localPrices = {};
-  for (const r of priceResults) {
-    if (r.price !== null) {
-      prices[r.country] = { price: r.price, currency: r.currency, available: true, source: r.source || "unknown" };
-      localPrices[r.country] = r.price;
-    } else {
-      prices[r.country] = { available: false, reason: "Price not found" };
-    }
-  }
-
-  // Step 4: Convert to home currency
+  // Build local + home-currency price maps.
   const rates = (await ratesPromise) || fallbackRates(homeCurrency);
-  const homePrices = {};
-  for (const [country, p] of Object.entries(prices)) {
-    if (p.available) {
-      const rate = rates[p.currency];
-      if (typeof rate === "number" && rate > 0) {
-        homePrices[country] = Math.round(p.price / rate);
-      }
-    }
+  const prices = {}, localPrices = {}, homePrices = {};
+  for (const [country, info] of Object.entries(core.prices)) {
+    prices[country] = { price: info.price, currency: info.currency, available: true };
+    localPrices[country] = info.price;
+    const rate = rates[info.currency];
+    if (typeof rate === "number" && rate > 0) homePrices[country] = Math.round(info.price / rate);
+  }
+  const failed = (core.failed || []).map(f => ({ country: f.country, available: false, reason: f.reason }));
+
+  // Enrich (origin/category/blurb/brand) + macro insight via Gemini — best-effort, optional.
+  const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
+  let enrich = {};
+  if (GEMINI_KEY) {
+    enrich = await geminiEnrich(inputUrl, core.name, homeCurrency, homePrices, GEMINI_KEY) || {};
   }
 
-  // Step 5: Generate macro insight
-  let macroInsight = "";
-  try {
-    const cheapest = Object.entries(homePrices).sort((a, b) => a[1] - b[1])[0];
-    const expensive = Object.entries(homePrices).sort((a, b) => b[1] - a[1])[0];
-    const insightPrompt = [
-      `Product: ${product.name} by ${product.brand} (origin: ${product.origin || "unknown"}).`,
-      `Prices converted to ${homeCurrency}: ${JSON.stringify(homePrices)}.`,
-      `Cheapest: ${cheapest?.[0]}. Most expensive: ${expensive?.[0]}.`,
-      `Write ONE concise sentence (max 35 words) tying this to ONE AP Macroeconomics concept:`,
-      `exchange rates / currency depreciation, purchasing power parity, tariffs & VAT, net exports / shopping tourism, or home-country origin advantage.`,
-      `Be specific about which country is cheapest and WHY. Return ONLY the sentence, no JSON.`,
-    ].join(" ");
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: insightPrompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
-        }),
-      }
-    );
-    if (res.ok) {
-      const d = await res.json();
-      macroInsight = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
-    }
-  } catch { /* insight is optional */ }
-
-  // Proxy product image
-  const rawImg = cleanImageUrl(product.image_url);
+  // Proxy the scraped product image so the browser can load it (hotlink-protected origins).
+  const rawImg = cleanImageUrl(core.image);
   const proxyImg = rawImg ? `${url.origin}/img?url=${encodeURIComponent(rawImg)}` : "";
 
-  return json({
+  const resp = json({
     found: true,
+    url: inputUrl,
     product: {
-      name: str(product.name),
-      brand: (str(product.brand) || "").toUpperCase() || "UNKNOWN BRAND",
-      origin: str(product.origin) || "unknown",
-      category: str(product.category) || "product",
+      name: str(core.name) || str(enrich.name) || "Product",
+      brand: (str(enrich.brand) || "").toUpperCase() || "UNKNOWN BRAND",
+      origin: str(enrich.origin) || "unknown",
+      category: str(enrich.category) || "product",
       image_url: proxyImg,
-      blurb: str(product.blurb) || "",
+      blurb: str(enrich.blurb) || "",
     },
     prices,
     local_prices: localPrices,
     home_prices: homePrices,
     home_currency: homeCurrency,
     fx_date: rates.__date || null,
-    macro_insight: macroInsight,
+    failed,
+    macro_insight: str(enrich.macro_insight) || "",
   }, 200);
+
+  if (cache) {
+    resp.headers.set("Cache-Control", "public, max-age=86400");
+    try { await cache.put(cacheKey, resp.clone()); } catch {}
+  }
+  return resp;
+}
+
+// Gemini enrichment: brand/origin/category/blurb + one macro-insight sentence. Best-effort.
+async function geminiEnrich(inputUrl, productName, homeCurrency, homePrices, geminiKey) {
+  const prompt = [
+    `A luxury product was found at: ${inputUrl} (name: "${productName || "unknown"}").`,
+    `Its verified retail prices, converted to ${homeCurrency}, by country: ${JSON.stringify(homePrices)}.`,
+    `Return ONLY a JSON object:`,
+    `{ "brand": "BRAND", "origin": "country the brand/house is based in", "category": "short noun phrase e.g. handbag/watch", "blurb": "one sentence on what it is and how production cost compares to retail", "macro_insight": "ONE sentence (<=35 words) tying THIS result to one AP Macro concept (exchange rates / PPP / VAT & tariffs / shopping tourism / origin advantage); name which country is cheapest and why." }`,
+  ].join("\n");
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`,
+      { method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ contents:[{ role:"user", parts:[{ text: prompt }] }],
+          tools:[{ google_search:{} }], generationConfig:{ temperature:0, maxOutputTokens:4096 } }) }
+    );
+    if (!res.ok) return {};
+    const d = await res.json();
+    const text = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
+    return extractJson(text) || {};
+  } catch { return {}; }
 }
 
 export default {
