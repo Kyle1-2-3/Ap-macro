@@ -36,7 +36,18 @@ Gucci·YSL·Moncler·Burberry·Tiffany 등은 안 됩니다. 배포·푸시는 �
 ## 알려진 문제점 (다음 세션에서 풀 것)
 1. **브랜드별 편차가 큼 — 가장 큰 문제.** Prada/Bottega에 과적합. 사용자 요구는
    "대부분의 브랜드에 적용, 몇 개 실패는 OK".
-2. **비결정적.** Firecrawl이 8개 동시 요청에서 408/500을 랜덤 반환 → 같은 URL도 매번 결과 다름.
+2. ~~**비결정적.**~~ ✅ FIXED (2026-05-30, 미커밋): 동시성 3 제한(`mapLimit`) + 408/429/5xx
+   지수백오프 재시도(`scrapeOne`) 추가. 오프라인 테스트 통과(8/8, maxConcurrent=3, 재시도 확인).
+   ⚠️ 라이브 브랜드 재측정은 아직 안 함(이 환경에 배포/Firecrawl 키 없음). 설계: docs/superpowers/
+   plans/2026-05-30-hreflang-official-price-image.md.
+   ✅ 추가(2026-05-30, 미커밋): **hreflang 기반 발견** 구현 — 입력 페이지 `<link hreflang>`로 각국
+   정확 URL을 사이트에서 직접 얻어 locale-swap 추측보다 우선 사용(`parseHreflang`/`fcGetHtml`/
+   `scrapeAll`). 비회귀(실패 시 기존 후보 유지; 모든 결과는 코드+통화 검증 통과 必). 오프라인 테스트
+   통과(hreflang URL 8/8 사용). ⚠️ 라이브 검증은 아직(키/배포 없음). 발견엔 입력 URL에 인식 가능한
+   로케일 구간 필요(`/us/en/...`; `/us/...`만으론 후보 미생성).
+   ✅ 추가(2026-05-30, 미커밋): **SPA 임베디드 상태 파서(계층 3.5)** — `__NEXT_DATA__`/`__APOLLO_STATE__`
+   등에서 **포맷된 문자열 가격만** 신뢰(정수 cents 100배 오차 차단) + 통화 일치 강제. 순수 추가(앞 계층이
+   실패할 때만)·검증 게이트 통과 必. 오프라인 테스트 통과(EUR/JPY 추출, cents·오통화 거부, JSON-LD 우선).
 3. **느림.** 상품당 41~95초. ⚠️ Cloudflare Worker 실행시간 제한에 걸릴 수 있음(배포 후 확인 필요).
 4. **렌더링 html 변경이 양날의 검:** Bottega 살림(0→8), Prada 죽임(8→6, 타임아웃).
 

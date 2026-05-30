@@ -181,6 +181,15 @@ export function parseProductHtml(html, wantCur) {
     if (pick) { out.price = normPrice(pick[0]); out.currency = pick[1]; }
   }
 
+  // Layer 3.5: SPA embedded state (__NEXT_DATA__ / __APOLLO_STATE__ / __INITIAL_STATE__ / __NUXT__).
+  // Recurse the parsed state for a node carrying a matching-currency price. Trusts ONLY a
+  // FORMATTED string price (contains , or .) so an integer "cents" value can't cause a 100×
+  // error; currency must equal wantCur, so a wrong-market value can never leak through.
+  if (out.price == null && wantCur) {
+    const st = extractFromState(html, wantCur);
+    if (st) { out.price = st.price; out.currency = st.currency; if (!out.image && st.image) out.image = st.image; }
+  }
+
   // Layer 4: visible currency-symbol string (rendered pages often show price only as text,
   // e.g. "$3,950" / "€ 2.650" / "¥ 510,400"). Keyed strictly to THIS country's symbol, so
   // there's no currency ambiguity; the most-frequent amount wins (the real price repeats,
@@ -205,33 +214,125 @@ export function parseProductHtml(html, wantCur) {
   return out;
 }
 
-// Firecrawl scrape one URL with geo + stealth, then verify (code present + currency matches).
+// Return the brace-balanced JSON object literal starting at/after fromIdx (string-aware), or null.
+function balancedJsonAfter(str, fromIdx) {
+  const start = str.indexOf("{", fromIdx);
+  if (start === -1) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < str.length; i++) {
+    const ch = str[i];
+    if (inStr) {
+      if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") { if (--depth === 0) return str.slice(start, i + 1); }
+  }
+  return null;
+}
+
+// Recurse a parsed state object for a node with a price + matching currency. Only accepts a
+// FORMATTED string price (has a , or .) to dodge the integer-cents 100× trap; currency must match.
+export function findStatePrice(node, wantCur, depth = 0) {
+  if (!node || typeof node !== "object" || depth > 10) return null;
+  const keys = Object.keys(node);
+  const pk = keys.find(k => /^(price|saleprice|currentprice|finalprice|sellingprice|amount)$/i.test(k));
+  const ck = keys.find(k => /(pricecurrency|currencycode|currency|isocurrencycode)/i.test(k) && typeof node[k] === "string");
+  if (pk && ck) {
+    const raw = node[pk], c = normCur(node[ck]);
+    if (c === wantCur && typeof raw === "string" && /[.,]/.test(raw)) {
+      const p = normPrice(raw);
+      if (p) {
+        const img = node.image || node.imageUrl || node.imageURL;
+        return { price: p, currency: c, image: typeof img === "string" ? img : null };
+      }
+    }
+  }
+  for (const k of keys) {
+    const r = findStatePrice(node[k], wantCur, depth + 1);
+    if (r) return r;
+  }
+  return null;
+}
+
+// Pull SPA state blobs (__NEXT_DATA__ script + window.__X_STATE__ assignments) and search them.
+export function extractFromState(html, wantCur) {
+  if (!html) return null;
+  const blobs = [];
+  const nx = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (nx) blobs.push(nx[1]);
+  const re = /(?:__APOLLO_STATE__|__INITIAL_STATE__|__PRELOADED_STATE__|__NUXT__|__INITIAL_DATA__)\s*=/g;
+  let m;
+  while ((m = re.exec(html))) { const b = balancedJsonAfter(html, m.index + m[0].length); if (b) blobs.push(b); }
+  for (const b of blobs) {
+    let data; try { data = JSON.parse(b.trim()); } catch { continue; }
+    const hit = findStatePrice(data, wantCur);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// Small sleep + bounded-concurrency map. Firecrawl returns random 408/429/5xx when hit with
+// 8 simultaneous requests; capping parallelism and retrying makes results deterministic.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+// Firecrawl-fetch one URL's rendered HTML, with geo + stealth + retry. Returns { html } or
+// { error }. Rendered `html` (JS executed) — NOT rawHtml — passes the anti-bot challenge that
+// returns a 4.5KB "Access Denied" for rawHtml on many brands. Retries transient 408/429/5xx
+// (and network errors) with exponential backoff; these appear randomly under load and are the
+// main cause of non-deterministic, flaky coverage.
+export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch) {
+  const reqBody = JSON.stringify({
+    url: targetUrl,
+    formats: ["html"],
+    location: { country: COUNTRY_ISO[country] || "US", languages: [LANG_OF[country] || "en"] },
+    proxy: "stealth",
+    waitFor: 6000,
+    timeout: 40000,
+  });
+  let res, delay = 1000;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await fetchImpl("https://api.firecrawl.dev/v2/scrape", {
+        method:"POST",
+        headers:{ "Authorization":`Bearer ${fcKey}`, "Content-Type":"application/json" },
+        body: reqBody,
+      });
+    } catch (e) {
+      if (attempt === 2) return { error: "fetch: " + String(e).slice(0,60) };
+      await sleep(delay); delay *= 2; continue;
+    }
+    if (res.status === 408 || res.status === 429 || res.status >= 500) {
+      if (attempt === 2) return { error: `Firecrawl ${res.status}` };
+      await sleep(delay); delay *= 2; continue;
+    }
+    break;
+  }
+  if (!res.ok) return { error: `Firecrawl ${res.status}` };
+  const data = await res.json();
+  const html = data?.data?.html || data?.data?.rawHtml || "";
+  if (!html) return { error: "No HTML" };
+  return { html };
+}
+
+// Scrape one URL then verify (product code present + currency matches the country).
 export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch) {
   if (!fcKey) return { ok:false, country, reason:"No Firecrawl key" };
   const wantCur = CURRENCY_OF[country];
-  let res;
-  try {
-    res = await fetchImpl("https://api.firecrawl.dev/v2/scrape", {
-      method:"POST",
-      headers:{ "Authorization":`Bearer ${fcKey}`, "Content-Type":"application/json" },
-      body: JSON.stringify({
-        url: targetUrl,
-        // Rendered `html` (JS executed) — NOT rawHtml. Executing the page's JS passes the
-        // anti-bot challenge that returns a 4.5KB "Access Denied" for rawHtml on many brands
-        // (Bottega, YSL, Loewe, Moncler, Gucci). waitFor lets client-side prices render in.
-        formats: ["html"],
-        location: { country: COUNTRY_ISO[country], languages: [LANG_OF[country]] },
-        proxy: "stealth",
-        waitFor: 6000,
-        timeout: 40000,
-      }),
-    });
-  } catch (e) { return { ok:false, country, reason:"fetch: "+String(e).slice(0,60), url:targetUrl }; }
-  if (!res.ok) return { ok:false, country, reason:`Firecrawl ${res.status}`, url:targetUrl };
-
-  const data = await res.json();
-  const html = data?.data?.html || data?.data?.rawHtml || "";
-  if (!html) return { ok:false, country, reason:"No HTML", url:targetUrl };
+  const got = await fcGetHtml(targetUrl, country, fcKey, fetchImpl);
+  if (got.error) return { ok:false, country, reason:got.error, url:targetUrl };
+  const html = got.html;
   if (code && !htmlHasCode(html, code)) return { ok:false, country, reason:"Product code not on page", url:targetUrl };
 
   const parsed = parseProductHtml(html, wantCur);
@@ -254,14 +355,84 @@ export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchIm
   return last;
 }
 
+// Parse <link rel="alternate" hreflang="…" href="…"> tags → { countryCodeLower: href }.
+// Region subtag wins (en-us→us, ja-jp→jp); a few sites use language-only codes (ja/ko) that
+// still imply a market. The site itself declaring these URLs beats any locale-swap guess.
+const LANG_ONLY_CC = { ja:"jp", ko:"kr" };
+export function parseHreflang(html) {
+  const out = {};
+  if (!html) return out;
+  const re = /<link\b[^>]*\brel=["']alternate["'][^>]*>/gi;
+  let m;
+  while ((m = re.exec(html))) {
+    const tag = m[0];
+    const hl = (tag.match(/hreflang=["']([^"']+)["']/i) || [])[1];
+    const href = (tag.match(/href=["']([^"']+)["']/i) || [])[1];
+    if (!hl || !href) continue;
+    const loc = hl.toLowerCase();
+    let cc = loc.includes("-") ? loc.split("-").pop() : LANG_ONLY_CC[loc];
+    if (cc && /^[a-z]{2}$/.test(cc) && !out[cc]) out[cc] = href;
+  }
+  return out;
+}
+
+// Map a 2-letter country code (lowercase) → our country name. "uk" aliases the UK.
+function ccToCountry() {
+  const m = {};
+  for (const c of COUNTRIES) m[COUNTRY_ISO[c].toLowerCase()] = c;
+  m["uk"] = "United Kingdom";
+  return m;
+}
+
+// Best-effort: which of our 8 countries the INPUT url is for (from its locale segment/subdomain).
+function inputCountryOf(inputUrl) {
+  try {
+    const u = new URL(inputUrl);
+    const map = ccToCountry();
+    const cand = [];
+    const sub = u.hostname.match(/^([a-z]{2})\./i);
+    if (sub) cand.push(sub[1].toLowerCase());
+    for (const s of u.pathname.split("/").filter(Boolean).slice(0, 2)) {
+      if (/^[a-z]{2}$/i.test(s)) cand.push(s.toLowerCase());
+      const cm = s.match(/^([a-z]{2})[-_]([a-z]{2})$/i);
+      if (cm) { cand.push(cm[1].toLowerCase()); cand.push(cm[2].toLowerCase()); }
+    }
+    for (const c of cand) if (map[c]) return map[c];
+  } catch { /* fall through */ }
+  return null;
+}
+
 // Full pipeline: input URL → { found, prices, failed, image, name }. All 8 countries in parallel.
 export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch) {
   const code = extractCode(inputUrl);
   const targets = buildCountryUrls(inputUrl);
   if (!Object.keys(targets).length) return { found:false, error:"URL has no recognizable locale segment", code };
 
-  const settled = await Promise.all(
-    COUNTRIES.map(c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl))
+  // Discovery upgrade: read hreflang off the input page → authoritative per-country product
+  // URLs straight from the site (no guessing). Best-effort & non-regressive: any failure leaves
+  // the locale-swap candidates untouched, and every hreflang URL still passes code+currency
+  // verification before a price is accepted — so a bad URL can only fail, never mislead.
+  if (fcKey) {
+    try {
+      const inCountry = inputCountryOf(inputUrl) || "United States";
+      const got = await fcGetHtml(inputUrl, inCountry, fcKey, fetchImpl);
+      if (got.html) {
+        const hl = parseHreflang(got.html);
+        const cc2c = ccToCountry();
+        for (const [cc, href] of Object.entries(hl)) {
+          const country = cc2c[cc];
+          if (country && targets[country]) {
+            targets[country] = [href, ...targets[country].filter(u => u !== href)];
+          }
+        }
+      }
+    } catch { /* keep locale-swap candidates */ }
+  }
+
+  // Concurrency-capped (not all 8 at once) → avoids Firecrawl's random 408/500 under load.
+  const settled = await mapLimit(
+    COUNTRIES, 3,
+    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl)
   );
   const prices = {}, failed = [];
   let image = null, name = null;
