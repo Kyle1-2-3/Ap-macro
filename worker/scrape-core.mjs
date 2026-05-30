@@ -181,6 +181,23 @@ export function parseProductHtml(html, wantCur) {
     if (pick) { out.price = normPrice(pick[0]); out.currency = pick[1]; }
   }
 
+  // Layer 4: visible currency-symbol string (rendered pages often show price only as text,
+  // e.g. "$3,950" / "€ 2.650" / "¥ 510,400"). Keyed strictly to THIS country's symbol, so
+  // there's no currency ambiguity; the most-frequent amount wins (the real price repeats,
+  // recommended-item prices vary).
+  if (out.price == null && wantCur) {
+    const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"₩", CHF:"(?:CHF|SFr\\.?)" };
+    const sym = SYM[wantCur];
+    if (sym) {
+      const rx = new RegExp(sym + "\\s?([0-9][0-9.,]{1,12})", "g");
+      const counts = {};
+      let m;
+      while ((m = rx.exec(html))) { const p = normPrice(m[1]); if (p) counts[p] = (counts[p]||0) + 1; }
+      const best = Object.entries(counts).sort((a,b) => b[1]-a[1] || a[0]-b[0])[0];
+      if (best) { out.price = parseFloat(best[0]); out.currency = wantCur; }
+    }
+  }
+
   if (!out.image) {
     const og = html.match(/<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["']/i);
     if (og) out.image = og[1];
@@ -199,17 +216,21 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
       headers:{ "Authorization":`Bearer ${fcKey}`, "Content-Type":"application/json" },
       body: JSON.stringify({
         url: targetUrl,
-        formats: ["rawHtml"],
+        // Rendered `html` (JS executed) — NOT rawHtml. Executing the page's JS passes the
+        // anti-bot challenge that returns a 4.5KB "Access Denied" for rawHtml on many brands
+        // (Bottega, YSL, Loewe, Moncler, Gucci). waitFor lets client-side prices render in.
+        formats: ["html"],
         location: { country: COUNTRY_ISO[country], languages: [LANG_OF[country]] },
         proxy: "stealth",
-        timeout: 25000,
+        waitFor: 6000,
+        timeout: 40000,
       }),
     });
   } catch (e) { return { ok:false, country, reason:"fetch: "+String(e).slice(0,60), url:targetUrl }; }
   if (!res.ok) return { ok:false, country, reason:`Firecrawl ${res.status}`, url:targetUrl };
 
   const data = await res.json();
-  const html = data?.data?.rawHtml || "";
+  const html = data?.data?.html || data?.data?.rawHtml || "";
   if (!html) return { ok:false, country, reason:"No HTML", url:targetUrl };
   if (code && !htmlHasCode(html, code)) return { ok:false, country, reason:"Product code not on page", url:targetUrl };
 
