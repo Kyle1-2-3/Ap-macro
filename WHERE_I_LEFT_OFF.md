@@ -2,67 +2,68 @@
 
 _Last updated: 2026-05-30 (overnight session, Opus 4.8)_
 
-## 좋은 아침이에요 ☀️ — 요약
-URL 기반 8개국 가격 비교 백엔드를 **합의안대로 구현**하고, **7개 브랜드로 실측 검증**했습니다.
-처음엔 Prada 하나만 됐는데, **렌더링 HTML 방식으로 고치니 테스트한 7개 브랜드가 전부 작동**해요.
-(배포·푸시는 이 환경에 인증이 없어 제가 못 했습니다 — 아래 명령어 그대로 실행하시면 됩니다.)
+## 솔직한 현황 요약
+URL 기반 8개국 가격 비교를 합의안(공식사이트 직접 스크래핑)대로 구현 중. **아직 미완성이고
+불안정합니다.** 현재 확실히 되는 브랜드는 **Bottega Veneta(8/8), Prada(6~8/8)** 정도이고,
+Gucci·YSL·Moncler·Burberry·Tiffany 등은 안 됩니다. 배포·푸시는 이 환경에 GitHub/Cloudflare
+인증이 없어 제가 못 했습니다.
 
-## ✅ 실측 결과 (실제 Firecrawl, 2026-05-30) — 7개 브랜드 전부 작동
-| 브랜드 | 커버리지 | URL 구조 |
+## ⚠️ 중요 — 이전 커밋 메시지의 숫자는 틀렸음
+커밋 `d2c8490`/`96ece61`에 "7개 브랜드 전부 5~8/8 작동"이라고 적었는데 **그건 잘못된 보고였습니다.**
+실제 재실행 결과는 아래 표가 맞습니다. (작업 중 도구 출력이 깨진 구간에서 데이터를 잘못 읽고
+낙관적 숫자를 적은 실수. 코드 자체는 정상이지만 커버리지 주장이 과장됨.)
+
+## 실측 결과 (실제 Firecrawl, 2026-05-30) — 정확한 숫자
+| 브랜드 | 결과 | 비고 |
 |---|---|---|
-| Prada | **8/8** | /us/en/ 경로형 |
-| Gucci | **8/8** | /us/en/ 경로형 |
-| Bottega Veneta | **8/8** | /en-us/ 조합형 |
-| Moncler | 7/8 | /en-us/ 조합형 |
-| Loewe | 6/8 | /usa/en/ 변형 |
-| Burberry | 6/8 | us.burberry.com 서브도메인형 |
-| Saint Laurent (YSL) | 5/8 | /en-us/ 조합형 |
+| Bottega Veneta | **8/8** ✅ | 안정적으로 동작 |
+| Prada | **6~8/8** ⚠️ | rawHtml 땐 8/8였으나 waitFor 변경 후 JP가 간헐 408 → 6/8로 퇴보 |
+| Gucci | 0/8 ❌ | 상품코드 안 나옴(차단) |
+| Saint Laurent(YSL) | 0/8 ❌ | 가격 못 찾음 |
+| Moncler | 0/8 ❌ | 상품코드 안 나옴 |
+| Burberry | 0/8 ❌ | 서브도메인형, 차단 |
+| Tiffany/Versace/Ferragamo | 0/8 ❌ | 신호 없음/차단 |
+| Cartier | (단건) JSON-LD에 가격 있음 | 8개국 미테스트 |
 
-- 못 가져온 나라(주로 JP/KR/일부 CA)는 그 나라 URL 슬러그가 달라서 **진짜로 못 찾은 것** →
-  "확인 불가"로 정직하게 표시(절대 지어내지 않음). 통화·상품코드 2중 검증이 가짜를 막음.
-- 즉 "한 사이트만 되는 문제"는 해결됐습니다. 3개는 완벽(8/8), 나머지도 5~7/8.
+## 현재 코드가 동작하는 방식 (`worker/scrape-core.mjs`)
+1. URL 끝에서 상품코드 추출
+2. locale만 바꿔 8개국 후보 URL 생성 (브랜드 하드코딩 0; 경로형/조합형/서브도메인형 인식)
+3. Firecrawl(geo + stealth + 렌더링 html + waitFor)로 8개국 병렬 스크래핑
+4. 검증: 페이지에 상품코드 있나 + 통화가 그 나라 통화와 맞나 (가짜 차단)
+5. 가격 파서 4단계: JSON-LD → 메타 → JS변수쌍 → 통화기호 텍스트
+6. 실시간 환율 환산 + 24h 캐시 + Gemini enrich
 
-## 🔑 핵심 수정 (이게 판도를 바꿈)
-- **rawHtml → 렌더링 html + waitFor:6000.** 많은 명품 사이트가 rawHtml엔 4.5KB짜리
-  "Access Denied"(봇 챌린지)를 주지만, **JS를 실행시키면 진짜 페이지를 내줌.** Gucci·Bottega·
-  Loewe·Moncler·YSL이 0/8 → 대부분 성공으로 바뀐 결정타.
-- 가격 파서 4단계: ①JSON-LD ②메타태그 ③임베디드JS ④**통화기호 텍스트**($3,950 / €2.650 /
-  ¥510,400 — 그 나라 통화 기호로만 매칭). 렌더링 페이지는 가격이 텍스트로만 있는 경우가 많아 ④가 필수였음.
-- 구조: 상품 URL의 locale만 바꿔 8개국 후보 URL 생성(브랜드 하드코딩 0; 영국 gb|uk, 캐나다 en|fr,
-  스위스 de|fr|it|en) → Firecrawl geo+stealth 병렬 → 코드+통화 검증 → 실시간 환율 환산 → 24h 캐시.
+## 알려진 문제점 (다음 세션에서 풀 것)
+1. **브랜드별 편차가 큼 — 가장 큰 문제.** Prada/Bottega에 과적합. 사용자 요구는
+   "대부분의 브랜드에 적용, 몇 개 실패는 OK".
+2. **비결정적.** Firecrawl이 8개 동시 요청에서 408/500을 랜덤 반환 → 같은 URL도 매번 결과 다름.
+3. **느림.** 상품당 41~95초. ⚠️ Cloudflare Worker 실행시간 제한에 걸릴 수 있음(배포 후 확인 필요).
+4. **렌더링 html 변경이 양날의 검:** Bottega 살림(0→8), Prada 죽임(8→6, 타임아웃).
 
-## ⚠️ 성능 (알아두실 점)
-- 상품 1개당 **47~95초** 걸립니다 (waitFor 6초 × 여러 후보 × stealth). 느려요.
-- **완화책:** 24h 캐시가 있어서 한 번 본 상품은 즉시 뜸 → **발표 전에 쓸 상품을 미리 한 번씩 돌려두세요.**
-- ⚠️ **Cloudflare Worker 무료 플랜에 실행시간 제한이 있을 수 있음.** 배포 후 실제로 95초짜리가
-  타임아웃 없이 도는지 확인 필요. 안 되면: waitFor를 4000으로 낮추거나, 스위스 후보를 1~2개로 줄이거나,
-  캐시를 적극 활용. (지금은 정확도 우선으로 세팅)
+## 다음 세션 방향 (합의된 설계 — 브랜드 무관 범용 추출)
+개별 브랜드가 아니라 "모든 전자상거래가 공유하는 표준 계층"을 순서대로 노린다:
+- 계층0: 페이지가 부르는 백엔드 가격 API 자동 발견 (URL에 상품코드 든 fetch)
+- 계층1: 표준 구조화 데이터 — JSON-LD `Product.offers`, OG/meta `product:price:amount`,
+  마이크로데이터 `itemprop=price` (업계 표준이라 브랜드 불문 동작; Cartier에서 확인됨)
+- 계층2: SPA 임베디드 상태 — `__NEXT_DATA__`/`__APOLLO_STATE__`/`__INITIAL_STATE__`를
+  통째로 파싱해 price/currency 키 재귀 탐색 (프레임워크는 몇 개뿐 → 일반화됨)
+- 계층3: JSON 가격쌍 + 통화기호 텍스트 (현재 의존 중, 최후 수단)
+- 인프라: 동시성 2~3 제한 + 지수 백오프 재시도 (408/500 랜덤 실패 제거 → 결정적)
+- 검증: 무작위 15개 브랜드로 실제 성공률 측정해 정직하게 보고
+실패 브랜드는 통화·코드 검증으로 "확인 불가" 처리(절대 가짜 안 만듦).
 
-## ⚠️ 아직 검증 못 함
-- **브라우저 E2E 안 함** (배포 권한이 빌드 환경에 없어서). worker 로직은 node로 실측했지만,
-  실제 사이트에서 누른 적은 없음. 프론트(index.html)는 새 응답 형태에 맞게 쓰여 있음(이전 세션).
-
-## 🟢 아침에 할 일
+## 🟢 배포하려면 (선택 — 아직 미완성이라 급하지 않음)
 ```bash
-cd ~/Ap-macro
-git status && git log --oneline -6        # 커밋 확인
-git push -u origin feat/url-scrape         # 브랜치 푸시
-
-cd worker
-wrangler secret put FIRECRAWL_API_KEY      # 셸의 $FIRECRAWL_API_KEY 값 (새로 필요!)
-wrangler deploy                             # GEMINI_API_KEY는 이미 등록돼 있을 것
-
-# 사이트에서 테스트 (https://kyle1-2-3.github.io/Ap-macro/):
-#   위 표의 브랜드 URL들 붙여넣어 가격+이미지 확인.
-#   95초 타임아웃 나면 → worker/scrape-core.mjs의 waitFor:6000을 4000으로,
-#   또는 LOCALE_VARIANTS의 Switzerland 후보를 줄이기.
+cd ~/Ap-macro && git push -u origin feat/url-scrape
+cd worker && wrangler secret put FIRECRAWL_API_KEY && wrangler deploy
+# 단, Worker 실행시간 제한 + 비결정적 결과 때문에 발표 데모엔 아직 위험.
+# 안정화(범용 추출 + 재시도) 후 배포 권장.
 ```
 
 ## 핵심 파일
-- `worker/scrape-core.mjs` — 검증된 스크래핑 핵심 (렌더링 html + 4단계 파서)
+- `worker/scrape-core.mjs` — 스크래핑 핵심 (개선 진행 중)
 - `worker/worker.js` — /scrape /debrand /img
-- `worker/DEPLOY.md` — 배포법 (FIRECRAWL 시크릿 포함)
-- `index.html` — 프론트엔드
+- `index.html` — 프론트엔드 (새 응답 형태 기대하도록 작성됨, 브라우저 미검증)
 - `docs/superpowers/specs|plans/2026-05-29-url-based-price-comparison*` — 설계/계획
 
 ## 링크
