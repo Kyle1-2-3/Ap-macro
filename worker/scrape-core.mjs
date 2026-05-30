@@ -136,7 +136,7 @@ export function buildCountryUrls(inputUrl) {
 //   1) JSON-LD Product offers   2) <meta product:price:*>   3) embedded JS "price"/"priceCurrency"
 // In layer 3, prefer the pair whose currency matches `wantCur` (skips recommended-product noise
 // and catches geo-redirect bleed).
-export function parseProductHtml(html, wantCur) {
+export function parseProductHtml(html, wantCur, code) {
   const out = { price:null, currency:null, image:null, name:null };
   if (!html) return out;
 
@@ -207,9 +207,29 @@ export function parseProductHtml(html, wantCur) {
     }
   }
 
+  // Image — try og:image first; if absent (e.g. Bottega has no OG/JSON-LD), fall back to an
+  // <img>/srcset URL whose filename contains the product code (so it's THIS product, not a
+  // recommended item). codeNeedles() gives the meaningful code tokens.
   if (!out.image) {
     const og = html.match(/<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["']/i);
     if (og) out.image = og[1];
+  }
+  if (!out.image && code) {
+    const needles = codeNeedles(code).map(n => n.toLowerCase());
+    if (needles.length) {
+      const urls = html.match(/https?:\/\/[^"'\s)]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s)]*)?/gi) || [];
+      const hit = urls.find(u => needles.some(n => u.toLowerCase().includes(n)));
+      if (hit) out.image = hit;
+    }
+  }
+
+  // Name — fall back to the first <h1> when structured data didn't supply one.
+  if (!out.name) {
+    const h1 = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+    if (h1) {
+      const t = h1[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      if (t && t.length <= 120) out.name = t;
+    }
   }
   return out;
 }
@@ -335,7 +355,7 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   const html = got.html;
   if (code && !htmlHasCode(html, code)) return { ok:false, country, reason:"Product code not on page", url:targetUrl };
 
-  const parsed = parseProductHtml(html, wantCur);
+  const parsed = parseProductHtml(html, wantCur, code);
   if (!parsed.price) return { ok:false, country, reason:"No price found", url:targetUrl };
   if (parsed.currency && parsed.currency !== wantCur)
     return { ok:false, country, reason:`Currency ${parsed.currency}≠${wantCur}`, url:targetUrl };
