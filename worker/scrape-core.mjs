@@ -9,6 +9,8 @@ export const CURRENCY_OF = {
   "United States":"USD","Canada":"CAD","France":"EUR","Italy":"EUR",
   "United Kingdom":"GBP","Switzerland":"CHF","Japan":"JPY","South Korea":"KRW"
 };
+// Rough USD value of 1 unit — ONLY for a sanity bound on extracted prices, not for display.
+const USD_PER = { USD:1, CAD:0.73, EUR:1.08, GBP:1.27, CHF:1.12, JPY:0.0064, KRW:0.00073 };
 export const COUNTRY_ISO = {
   "United States":"US","Canada":"CA","France":"FR","Italy":"IT",
   "United Kingdom":"GB","Switzerland":"CH","Japan":"JP","South Korea":"KR"
@@ -128,6 +130,22 @@ export function buildCountryUrls(inputUrl) {
       out[c] = ccs.map(cc => `${u.protocol}//${cc}.${sub[2]}${u.pathname}`);
     }
     return out;
+  }
+
+  // No locale segment at all (e.g. Balenciaga "/7897722AA4V1000.html"). Insert a locale prefix
+  // after the origin — confirmed working: ".../ja-jp/7897722AA4V1000.html" returns the JP page.
+  // Try {lang}-{cc}, {cc}/{lang}, {cc}; the code+currency+range gate filters wrong guesses, so
+  // extra candidates only cost a fetch, never correctness. Bare URL kept as a last candidate.
+  const path = u.pathname;
+  for (const c of COUNTRIES) {
+    const cands = [];
+    for (const [cc, lang] of LOCALE_VARIANTS[c]) {
+      cands.push(`${u.origin}/${lang}-${cc}${path}`);
+      cands.push(`${u.origin}/${cc}/${lang}${path}`);
+      cands.push(`${u.origin}/${cc}${path}`);
+    }
+    cands.push(inputUrl);                       // bare page (works for the input's own country)
+    out[c] = [...new Set(cands)];
   }
   return out;
 }
@@ -391,6 +409,12 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   if (parsed.currency !== wantCur)
     return { ok:false, country, reason:`Currency ${parsed.currency||"unknown"}≠${wantCur}`, url:targetUrl };
 
+  // Sanity range (USD-equivalent): rejects garbage like a concatenated "€193.882.746" that
+  // passes the currency check. Bounds are wide enough for any real luxury item ($20–$1M).
+  const usd = parsed.price * (USD_PER[wantCur] || 1);
+  if (!(usd >= 20 && usd <= 1_000_000))
+    return { ok:false, country, reason:`Price out of range (${parsed.price} ${wantCur})`, url:targetUrl };
+
   return { ok:true, country, price:parsed.price, currency:wantCur, image:parsed.image, name:parsed.name, url:targetUrl };
 }
 
@@ -456,13 +480,13 @@ function inputCountryOf(inputUrl) {
 // Full pipeline: input URL → { found, prices, failed, image, name }. All 8 countries in parallel.
 export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch) {
   const code = extractCode(inputUrl);
-  const targets = buildCountryUrls(inputUrl);
-  if (!Object.keys(targets).length) return { found:false, error:"URL has no recognizable locale segment", code };
+  const targets = buildCountryUrls(inputUrl);  // may be {} when the URL has no locale segment
 
-  // Discovery upgrade: read hreflang off the input page → authoritative per-country product
-  // URLs straight from the site (no guessing). Best-effort & non-regressive: any failure leaves
-  // the locale-swap candidates untouched, and every hreflang URL still passes code+currency
-  // verification before a price is accepted — so a bad URL can only fail, never mislead.
+  // Discovery: read hreflang off the input page → authoritative per-country product URLs straight
+  // from the site (no guessing). This is also the ONLY discovery path for locale-less URLs like
+  // Loewe (/.../A510P89X02-7610.html) or Balenciaga (/7897722AA4V1000.html) where buildCountryUrls
+  // returns {}. Best-effort & non-regressive: failure keeps locale-swap candidates, and every
+  // hreflang URL still passes code+currency verification — a bad URL can only fail, never mislead.
   if (fcKey) {
     try {
       const inCountry = inputCountryOf(inputUrl) || "United States";
@@ -472,12 +496,17 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch) {
         const cc2c = ccToCountry();
         for (const [cc, href] of Object.entries(hl)) {
           const country = cc2c[cc];
-          if (country && targets[country]) {
-            targets[country] = [href, ...targets[country].filter(u => u !== href)];
-          }
+          if (!country) continue;
+          const existing = targets[country] || [];
+          targets[country] = [href, ...existing.filter(u => u !== href)];  // hreflang URL first
         }
       }
-    } catch { /* keep locale-swap candidates */ }
+    } catch { /* keep whatever candidates we have */ }
+  }
+
+  // Only now decide there's nothing to try (neither a locale pattern nor hreflang yielded URLs).
+  if (!Object.keys(targets).length) {
+    return { found:false, error:"Could not derive per-country URLs (no locale segment, no hreflang)", code, prices:{}, failed:[] };
   }
 
   // Concurrency-capped (not all 8 at once) → avoids Firecrawl's random 408/500 under load.
