@@ -277,7 +277,9 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // without JSON-LD. Read that structured `content` value before falling back to loose visible
   // text, which can contain Lit template ids like `lit$129293845$` that look like prices.
   if (out.price == null && wantCur) {
-    const p = extractCurrentPriceElement(html, wantCur) || extractPriceValueContent(html, wantCur);
+    const p = extractCurrentPriceElement(html, wantCur)
+           || extractRenderedSalesPrice(html, wantCur)
+           || extractPriceValueContent(html, wantCur);
     if (p) { out.price = p; out.currency = wantCur; }
   }
 
@@ -391,9 +393,38 @@ function extractPriceValueContent(html, wantCur) {
     if (!curRe.test(around)) continue;
     if (!/(price|prices|sales|list|product[-_]?header)/i.test(around)) continue;
     const rank = /\blist\b|regular|standard|was-price|strike/i.test(around) ? 0 : 1;
-    hits.push({ price, rank });
+    hits.push({ price, rank, pos: m.index });
   }
-  hits.sort((a, b) => a.rank - b.rank || b.price - a.price);
+  hits.sort((a, b) => a.rank - b.rank || a.pos - b.pos);
+  return hits[0]?.price || null;
+}
+
+function extractRenderedSalesPrice(html, wantCur) {
+  const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"₩", CHF:"(?:CHF|SFr\\.?)" };
+  const cur = wantCur.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sym = SYM[wantCur];
+  if (!sym) return null;
+
+  const saleTag = /<span\b[^>]*class=["'][^"']*\bsales\b[^"']*["'][^>]*>/gi;
+  const hits = [];
+  let m;
+  while ((m = saleTag.exec(html))) {
+    const around = html.slice(Math.max(0, m.index - 500), Math.min(html.length, m.index + 700));
+    // Avoid trailing marketing blocks or tiny related-item cards; require a real pricing area.
+    if (!/(product[-_]?prices|default-pricing|price back-to-product-anchor-js|product[-_]?anchor)/i.test(around)) continue;
+    if (/strike-through\s+list/i.test(around.slice(0, 220))) continue;
+    const priceRe = new RegExp(
+      String.raw`(?:${sym}\s?([0-9][0-9.,]{1,12})|([0-9][0-9.,]{1,12})\s?(?:${sym}|${cur}\b))`,
+      "i"
+    );
+    const pm = around.match(priceRe);
+    if (!pm) continue;
+    const p = normPrice(pm[1] || pm[2]);
+    if (!p) continue;
+    const rank = /default-pricing|product[-_]?prices|product[-_]?anchor/i.test(around) ? 0 : 1;
+    hits.push({ price: p, rank, pos: m.index });
+  }
+  hits.sort((a, b) => a.rank - b.rank || a.pos - b.pos);
   return hits[0]?.price || null;
 }
 

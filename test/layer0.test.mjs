@@ -125,3 +125,22 @@ test("parseProductHtml reads current price when ISO currency follows the amount"
   assert.equal(p.price, 1070);
   assert.equal(p.currency, "CAD");
 });
+
+test("parseProductHtml prefers the rendered sales price over a struck list price", () => {
+  const html = `
+    <div class="product-prices prices d-flex">
+      <div class="price back-to-product-anchor-js">
+        <span class="default-pricing">
+          <span class="sales"><span class="value"> $2,580 </span></span>
+          <span class="strike-through list">
+            <span class="value" content="1350.00">
+              <span class="sr-only"> Was </span> $1,350 <span class="sr-only"> Is </span>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>`;
+  const p = parseProductHtml(html, "USD", "1023460-1A17455_2K00J");
+  assert.equal(p.price, 2580);
+  assert.equal(p.currency, "USD");
+});
