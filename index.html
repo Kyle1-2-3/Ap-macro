@@ -746,22 +746,22 @@ function updateRateNote(){
   $("#rateNote").textContent = t('rateLive', homeCur());
 }
 
-/* ---- image upload ---- */
-let uploadedImageData = null; // { base64, mimeType }
-
-function setupUpload(){
-  const zone = $("#uploadZone");
-  const input = $("#fileInput");
-
-  zone.onclick = () => input.click();
-
-  zone.ondragover = e => { e.preventDefault(); zone.classList.add("dragover"); };
-  zone.ondragleave = () => zone.classList.remove("dragover");
-  zone.ondrop = e => { e.preventDefault(); zone.classList.remove("dragover"); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
-
-  input.onchange = () => { if(input.files[0]) handleFile(input.files[0]); };
-
-  $("#resetBtn").onclick = resetUpload;
+/* ---- URL validation ---- */
+// Client-side: only check basic URL format + known blacklist.
+// The full "is this an official brand site?" check happens server-side via Gemini.
+const BLOCKED_DOMAINS = new Set([
+  "farfetch.com","ssense.com","net-a-porter.com","mytheresa.com",
+  "matchesfashion.com","nordstrom.com","saksfifthavenue.com",
+  "bloomingdales.com","selfridges.com","harrods.com","amazon.com",
+  "ebay.com","stockx.com","grailed.com","vestiairecollective.com"
+]);
+function validateUrl(input){
+  let parsed;
+  try { parsed = new URL(input); } catch { return { valid: false, msg: t('errInvalidUrl') }; }
+  if(parsed.protocol !== "https:") return { valid: false, msg: t('errInvalidUrl') };
+  const domain = parsed.hostname.replace(/^www\./, "").toLowerCase();
+  if(BLOCKED_DOMAINS.has(domain)) return { valid: false, msg: t('errBlocked', domain) };
+  return { valid: true, domain };
 }
 
 function handleFile(file){
