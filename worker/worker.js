@@ -379,8 +379,15 @@ async function handleScrape(request, env, url) {
   if (cache) { const hit = await cache.match(cacheKey); if (hit) return hit; }
 
   // Core: scrape all 8 official country pages directly, verify, never fake.
+  // visionFn = fallback used ONLY when text extraction fails for a country: screenshot the page
+  // (closing locale modals via Escape) and read the price off the image with Gemini vision. The
+  // result still passes scrape-core's currency + sanity gate, so it can't introduce a bad price.
+  const GEMINI_KEY_V = env.GEMINI_API_KEY || "";
+  const visionFn = GEMINI_KEY_V
+    ? (u, country, wantCur) => visionExtractPrice(u, country, wantCur, FIRECRAWL_KEY, GEMINI_KEY_V)
+    : null;
   const ratesPromise = getRates(homeCurrency);
-  const core = await scrapeAll(inputUrl, FIRECRAWL_KEY);
+  const core = await scrapeAll(inputUrl, FIRECRAWL_KEY, fetch, visionFn);
   if (!core.found) {
     return json({ found: false, error: core.error || "Could not read official prices for that link", failed: core.failed || [] }, 200);
   }
@@ -454,6 +461,74 @@ async function geminiEnrich(inputUrl, productName, homeCurrency, homePrices, gem
     const text = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
     return extractJson(text) || {};
   } catch { return {}; }
+}
+
+// Vision fallback: screenshot the product page (closing locale modals) and read price+currency
+// off the image with Gemini vision. Returns {price, currency, name} or null. The caller
+// (scrape-core) re-checks currency + sanity, so a misread can only fail, never inject a bad price.
+async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey) {
+  // 1. screenshot via Firecrawl (rendered + stealth; Escape dismisses geo/locale modals)
+  let shot = "";
+  try {
+    const r = await fetch("https://api.firecrawl.dev/v2/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fcKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url, formats: ["screenshot"], proxy: "stealth", timeout: 60000,
+        actions: [
+          { type: "wait", milliseconds: 7000 },
+          { type: "press", key: "Escape" },
+          { type: "wait", milliseconds: 2000 },
+          { type: "screenshot" },
+        ],
+      }),
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    shot = d?.data?.screenshot || (d?.data?.actions?.screenshots || []).slice(-1)[0] || "";
+    if (!shot) return null;
+  } catch { return null; }
+
+  // 2. fetch the image bytes → base64 for Gemini
+  let b64, mime = "image/png";
+  try {
+    if (shot.startsWith("http")) {
+      const ir = await fetch(shot);
+      if (!ir.ok) return null;
+      mime = ir.headers.get("content-type") || "image/png";
+      const buf = await ir.arrayBuffer();
+      b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    } else {
+      b64 = shot.replace(/^data:image\/\w+;base64,/, "");
+    }
+  } catch { return null; }
+
+  // 3. Gemini vision reads the displayed price. Strict: only the main product price, in wantCur.
+  const prompt = [
+    `This is a screenshot of an official brand product page for ${country}.`,
+    `Read ONLY the main product's selling price as displayed on the page (ignore other items,`,
+    `crossed-out/original prices, and "from" prices). The currency should be ${wantCur}.`,
+    `Return ONLY JSON: { "price": <number, no symbols/separators>, "currency": "${wantCur}", "name": "<product name or null>" }.`,
+    `If no clear single price is visible, return { "price": null, "currency": null }.`,
+  ].join("\n");
+  try {
+    const gr = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
+        }) }
+    );
+    if (!gr.ok) return null;
+    const gd = await gr.json();
+    const text = (gd?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
+    const parsed = extractJson(text);
+    if (parsed && typeof parsed.price === "number" && parsed.price > 0) {
+      return { price: parsed.price, currency: parsed.currency || wantCur, name: parsed.name || null };
+    }
+    return null;
+  } catch { return null; }
 }
 
 export default {

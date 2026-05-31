@@ -418,14 +418,29 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   return { ok:true, country, price:parsed.price, currency:wantCur, image:parsed.image, name:parsed.name, url:targetUrl };
 }
 
-// Try each candidate locale URL for a country until one verifies.
-export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch) {
+// Try each candidate locale URL for a country until one verifies. If ALL text-extraction
+// candidates fail and a visionFn is supplied, fall back to reading a screenshot of the most
+// likely URL (the first candidate). The vision result passes the SAME currency + sanity gate,
+// so a wrong read can only fail, never mislead. visionFn(url, country, wantCur) -> {price,currency}|null
+export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch, visionFn = null) {
   if (!candidateUrls || !candidateUrls.length) return { ok:false, country, reason:"No URL for country" };
   let last = { ok:false, country, reason:"No candidate verified" };
   for (const u of candidateUrls) {
     const r = await scrapeOne(u, country, code, fcKey, fetchImpl);
     if (r.ok) return r;
     last = r;
+  }
+  // Vision fallback — only when text failed and a vision reader is available.
+  if (visionFn) {
+    const wantCur = CURRENCY_OF[country];
+    try {
+      const v = await visionFn(candidateUrls[0], country, wantCur);
+      if (v && v.price && normCur(v.currency) === wantCur) {
+        const usd = Number(v.price) * (USD_PER[wantCur] || 1);
+        if (usd >= 20 && usd <= 1_000_000)
+          return { ok:true, country, price:Number(v.price), currency:wantCur, image:v.image||null, name:v.name||null, url:candidateUrls[0], via:"vision" };
+      }
+    } catch { /* vision is best-effort */ }
   }
   return last;
 }
@@ -478,7 +493,7 @@ function inputCountryOf(inputUrl) {
 }
 
 // Full pipeline: input URL → { found, prices, failed, image, name }. All 8 countries in parallel.
-export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch) {
+export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = null) {
   const code = extractCode(inputUrl);
   const targets = buildCountryUrls(inputUrl);  // may be {} when the URL has no locale segment
 
@@ -512,7 +527,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch) {
   // Concurrency-capped (not all 8 at once) → avoids Firecrawl's random 408/500 under load.
   const settled = await mapLimit(
     COUNTRIES, 3,
-    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl)
+    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn)
   );
   const prices = {}, failed = [];
   let image = null, name = null;
