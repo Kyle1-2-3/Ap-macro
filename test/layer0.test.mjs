@@ -112,3 +112,10 @@ test("parseProductHtml prefers the PDP current price over related-product prices
   assert.equal(p.price, 258500);
   assert.equal(p.currency, "JPY");
 });
+
+test("parseProductHtml reads current price when ISO currency follows the amount", () => {
+  const html = `<p data-element="product-current-price">1,070.00 CAD</p>`;
+  const p = parseProductHtml(html, "CAD", "1HC519_2ZP6_F0018");
+  assert.equal(p.price, 1070);
+  assert.equal(p.currency, "CAD");
+});

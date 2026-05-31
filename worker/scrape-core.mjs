@@ -358,10 +358,11 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
 
 function extractCurrentPriceElement(html, wantCur) {
   const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"₩", CHF:"(?:CHF|SFr\\.?)" };
+  const cur = wantCur.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const sym = SYM[wantCur];
   if (!sym) return null;
   const attr = String.raw`(?:data-element|data-testid|class)=["'][^"']*(?:product[-_]?current[-_]?price|current[-_]?price|product[-_]?price)[^"']*["']`;
-  const amount = String.raw`(?:${sym}\s?([0-9][0-9.,]{1,12})|([0-9][0-9.,]{1,12})\s?${sym})`;
+  const amount = String.raw`(?:${sym}\s?([0-9][0-9.,]{1,12})|([0-9][0-9.,]{1,12})\s?(?:${sym}|${cur}\b))`;
   const re = new RegExp(String.raw`<[^>]+${attr}[^>]*>[\s\S]{0,300}?${amount}`, "i");
   const m = html.match(re);
   if (!m) return null;
