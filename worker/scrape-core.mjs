@@ -378,7 +378,7 @@ export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch) {
     formats: ["html"],
     location: { country: COUNTRY_ISO[country] || "US", languages: [LANG_OF[country] || "en"] },
     proxy: "stealth",
-    waitFor: 6000,
+    waitFor: 4000,
     timeout: 40000,
   });
   let res, delay = 1000;
@@ -539,7 +539,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
 
   // Concurrency-capped (not all 8 at once) → avoids Firecrawl's random 408/500 under load.
   const settled = await mapLimit(
-    COUNTRIES, 3,
+    COUNTRIES, 5,
     c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn)
   );
   const prices = {}, failed = [];
