@@ -34,6 +34,54 @@ export const LOCALE_VARIANTS = {
   "South Korea":    [["kr","ko"]],
 };
 
+// Demandware (Salesforce Commerce Cloud) per-country storefront locale codes (lang_COUNTRY).
+// First that verifies wins, same as LOCALE_VARIANTS. CA/CH list their multilingual variants.
+export const DW_LOCALE = {
+  "United States":  ["en_US"],
+  "Canada":         ["en_CA", "fr_CA"],
+  "France":         ["fr_FR"],
+  "Italy":          ["it_IT"],
+  "United Kingdom": ["en_GB"],
+  "Switzerland":    ["de_CH", "fr_CH", "it_CH", "en_CH"],
+  "Japan":          ["ja_JP"],
+  "South Korea":    ["ko_KR"],
+};
+
+// Detect a Salesforce Commerce Cloud (Demandware) storefront and extract its site id + origin.
+// Looks for the controller path `on/demandware.store/Sites-<ID>-Site` the platform always emits.
+// Returns { siteId, origin } or null. Null → Layer 0 is skipped (the no-regression guarantee).
+export function detectDemandware(html, inputUrl) {
+  if (!html) return null;
+  const m = html.match(/demandware\.store\/Sites-([A-Za-z0-9_-]+)-Site/i);
+  if (!m) return null;
+  let origin;
+  try { origin = new URL(inputUrl).origin; } catch { return null; }
+  return { siteId: m[1], origin };
+}
+
+// Build the standard Demandware product controller URLs for a country (one per locale variant).
+// The controller response carries clean JSON-LD that parseProductHtml already reads correctly.
+export function demandwareControllerUrls(dw, country, sku) {
+  if (!dw || !sku) return [];
+  const locales = DW_LOCALE[country] || [];
+  return locales.map(
+    (loc) => `${dw.origin}/on/demandware.store/Sites-${dw.siteId}-Site/${loc}/Product-Show?pid=${sku}`
+  );
+}
+
+// Prepend Demandware controller URLs ahead of each country's existing candidates (deduped).
+// Pure (no network) so it's unit-testable. Returns the same targets object, mutated and returned.
+export function applyDemandwareTargets(targets, dw, sku) {
+  if (!dw || !sku) return targets;
+  for (const country of COUNTRIES) {
+    const ctrl = demandwareControllerUrls(dw, country, sku);
+    if (!ctrl.length) continue;
+    const existing = (targets[country] || []).filter((u) => !ctrl.includes(u));
+    targets[country] = [...ctrl, ...existing];
+  }
+  return targets;
+}
+
 // Currency symbol / loose token → ISO code.
 const CUR_MAP = {
   "$":"USD","US$":"USD","USD":"USD","CA$":"CAD","CAD":"CAD","C$":"CAD",
@@ -528,6 +576,11 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
           const existing = targets[country] || [];
           targets[country] = [href, ...existing.filter(u => u !== href)];  // hreflang URL first
         }
+        // Layer 0: if this is a Demandware storefront, prepend the standard product controller
+        // URLs (which carry clean JSON-LD) ahead of the consumer-PDP candidates. The same
+        // currency + sanity + outlier gates still apply, so a bad controller read can only fail.
+        const dw = detectDemandware(got.html, inputUrl);
+        if (dw) applyDemandwareTargets(targets, dw, code);
       }
     } catch { /* keep whatever candidates we have */ }
   }
