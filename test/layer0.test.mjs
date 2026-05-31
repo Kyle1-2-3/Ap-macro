@@ -105,3 +105,10 @@ test("structuredOnly still reads the controller JSON-LD price (Layer 1 unaffecte
   assert.equal(p.price, 1225);
   assert.equal(p.currency, "USD");
 });
+
+test("parseProductHtml prefers the PDP current price over related-product prices", () => {
+  const html = fx("prada_pdp_jp.html");
+  const p = parseProductHtml(html, "JPY", "P29C26_195X_F0442_S_OOO");
+  assert.equal(p.price, 258500);
+  assert.equal(p.currency, "JPY");
+});

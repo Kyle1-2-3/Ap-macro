@@ -272,7 +272,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // without JSON-LD. Read that structured `content` value before falling back to loose visible
   // text, which can contain Lit template ids like `lit$129293845$` that look like prices.
   if (out.price == null && wantCur) {
-    const p = extractPriceValueContent(html, wantCur);
+    const p = extractCurrentPriceElement(html, wantCur) || extractPriceValueContent(html, wantCur);
     if (p) { out.price = p; out.currency = wantCur; }
   }
 
@@ -354,6 +354,18 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     }
   }
   return out;
+}
+
+function extractCurrentPriceElement(html, wantCur) {
+  const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"₩", CHF:"(?:CHF|SFr\\.?)" };
+  const sym = SYM[wantCur];
+  if (!sym) return null;
+  const attr = String.raw`(?:data-element|data-testid|class)=["'][^"']*(?:product[-_]?current[-_]?price|current[-_]?price|product[-_]?price)[^"']*["']`;
+  const amount = String.raw`(?:${sym}\s?([0-9][0-9.,]{1,12})|([0-9][0-9.,]{1,12})\s?${sym})`;
+  const re = new RegExp(String.raw`<[^>]+${attr}[^>]*>[\s\S]{0,300}?${amount}`, "i");
+  const m = html.match(re);
+  if (!m) return null;
+  return normPrice(m[1] || m[2]);
 }
 
 function extractPriceValueContent(html, wantCur) {
