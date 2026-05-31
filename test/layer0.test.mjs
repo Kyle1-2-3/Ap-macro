@@ -90,15 +90,13 @@ test("applyDemandwareTargets is a no-op when dw is null", () => {
   assert.deepEqual(out, targets);
 });
 
-// --- structuredOnly: suppress text-frequency guessing on Demandware consumer PDPs ---
+// --- structuredOnly: read structured price markup but suppress loose text guessing ---
 
-test("structuredOnly suppresses the text guess on a Demandware consumer PDP (no JSON-LD)", () => {
+test("structuredOnly reads Demandware value-content price markup on a consumer PDP", () => {
   const html = fx("rimowa_pdp_gb.html"); // consumer PDP, zero JSON-LD
-  const guessed = parseProductHtml(html, "GBP", "83273171");                 // Layer 4 active
   const honest  = parseProductHtml(html, "GBP", "83273171", { structuredOnly: true });
-  // Without the flag the heuristic emits *some* number; with it, no text guess is accepted.
-  assert.ok(guessed.price != null, "baseline: heuristic produces a (possibly wrong) guess");
-  assert.equal(honest.price, null, "structuredOnly: honest blank instead of a text guess");
+  assert.equal(honest.price, 850);
+  assert.equal(honest.currency, "GBP");
 });
 
 test("structuredOnly still reads the controller JSON-LD price (Layer 1 unaffected)", () => {

@@ -231,8 +231,13 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     if (out.price && (!wantCur || out.currency === wantCur)) break;
   }
 
-  // Layer 2: meta tags
-  if (out.price == null) {
+  // Layer 2: meta tags.
+  // structuredOnly (Demandware): trust ONLY the Layer-1 JSON-LD Product offer, the single
+  // SKU/product-anchored source. On Demandware consumer PDPs the meta/embedded/text layers pick
+  // up NON-product microdata — e.g. a free-shipping threshold marked up as
+  // `itemprop="price" content="250.00"` (£250) — so we skip them and prefer an honest blank.
+  // The Product-Show controller still carries real JSON-LD, so Layer 1 handles it unaffected.
+  if (out.price == null && !opts.structuredOnly) {
     const m = html.match(/property=["']product:price:amount["']\s+content=["']([\d.,]+)["']/i)
            || html.match(/itemprop=["']price["'][^>]*content=["']([\d.,]+)["']/i);
     if (m) out.price = normPrice(m[1]);
@@ -242,7 +247,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   }
 
   // Layer 3: embedded JS app-state (Gucci etc. keep the real price only here)
-  if (out.price == null) {
+  if (out.price == null && !opts.structuredOnly) {
     const pairs = [];
     let m;
     const rxPC = /"price"\s*:\s*"?(\d[\d.,]*)"?\s*,\s*"priceCurrency"\s*:\s*"?([A-Za-z₩¥£€$￥]{1,4})/gi;
@@ -257,9 +262,18 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // Recurse the parsed state for a node carrying a matching-currency price. Trusts ONLY a
   // FORMATTED string price (contains , or .) so an integer "cents" value can't cause a 100×
   // error; currency must equal wantCur, so a wrong-market value can never leak through.
-  if (out.price == null && wantCur) {
+  if (out.price == null && wantCur && !opts.structuredOnly) {
     const st = extractFromState(html, wantCur);
     if (st) { out.price = st.price; out.currency = st.currency; if (!out.image && st.image) out.image = st.image; }
+  }
+
+  // Layer 3.75: commerce-platform price markup. Salesforce Commerce Cloud/Demandware often
+  // renders the real PDP price as `<span class="value" content="3150.0">CA$3,150.00</span>`
+  // without JSON-LD. Read that structured `content` value before falling back to loose visible
+  // text, which can contain Lit template ids like `lit$129293845$` that look like prices.
+  if (out.price == null && wantCur) {
+    const p = extractPriceValueContent(html, wantCur);
+    if (p) { out.price = p; out.currency = wantCur; }
   }
 
   // Layer 4: visible currency-symbol string (rendered pages often show price only as text,
@@ -269,7 +283,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // beats the frequency heuristic, which otherwise picks a repeated recommended-item price
   // (e.g. Gucci shows the real €3.200 once but a related bag €2.900 five times). PRIORITY 2:
   // most-frequent symbol amount as a fallback.
-  if (out.price == null && wantCur) {
+  if (out.price == null && wantCur && !opts.structuredOnly) {
     const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"₩", CHF:"(?:CHF|SFr\\.?)" };
     const sym = SYM[wantCur];
     if (sym) {
@@ -340,6 +354,29 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     }
   }
   return out;
+}
+
+function extractPriceValueContent(html, wantCur) {
+  const PRES = {
+    USD: /\$|USD/i, CAD: /CA\$|C\$|CAD/i, EUR: /€|EUR/i, GBP: /£|GBP/i,
+    JPY: /[¥￥]|JPY|円/i, KRW: /₩|KRW|원/i, CHF: /CHF|SFr/i,
+  };
+  const curRe = PRES[wantCur];
+  if (!curRe) return null;
+  const hits = [];
+  const re = /<span\b[^>]*class=["'][^"']*\bvalue\b[^"']*["'][^>]*\bcontent=["']([\d.,]+)["'][^>]*>/gi;
+  let m;
+  while ((m = re.exec(html))) {
+    const price = normPrice(m[1]);
+    if (!price) continue;
+    const around = html.slice(Math.max(0, m.index - 600), Math.min(html.length, m.index + 900));
+    if (!curRe.test(around)) continue;
+    if (!/(price|prices|sales|list|product[-_]?header)/i.test(around)) continue;
+    const rank = /\blist\b|regular|standard|was-price|strike/i.test(around) ? 0 : 1;
+    hits.push({ price, rank });
+  }
+  hits.sort((a, b) => a.rank - b.rank || b.price - a.price);
+  return hits[0]?.price || null;
 }
 
 // Return the brace-balanced JSON object literal starting at/after fromIdx (string-aware), or null.
@@ -597,7 +634,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   // instead of ~200s serial) — critical for Rimowa-class pages where most countries use vision.
   const settled = await mapLimit(
     COUNTRIES, 8,
-    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn)
+    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, isDemandware)
   );
   const prices = {}, failed = [];
   let image = null, name = null;
