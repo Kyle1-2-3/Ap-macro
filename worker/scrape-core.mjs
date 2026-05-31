@@ -537,9 +537,12 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
     return { found:false, error:"Could not derive per-country URLs (no locale segment, no hreflang)", code, prices:{}, failed:[] };
   }
 
-  // Concurrency-capped (not all 8 at once) → avoids Firecrawl's random 408/500 under load.
+  // All 8 countries in parallel. Firecrawl tolerates 8 concurrent (verified for screenshots);
+  // the per-fetch 408/429/5xx retry in fcGetHtml absorbs any transient load errors. Full
+  // parallelism is what keeps the vision fallback fast (8×~25s screenshots overlap, ~30s wall
+  // instead of ~200s serial) — critical for Rimowa-class pages where most countries use vision.
   const settled = await mapLimit(
-    COUNTRIES, 5,
+    COUNTRIES, 8,
     c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn)
   );
   const prices = {}, failed = [];
