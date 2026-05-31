@@ -712,7 +712,7 @@ function loadImage(url){
 /* ---- debrand from a URL (proxy -> canvas -> /debrand) ---- */
 async function debrandFromUrl(imageUrl){
   try {
-    const proxied = `${WORKER_URL}/img?url=${encodeURIComponent(imageUrl)}`;
+    const proxied = imageUrl;   // already a proxied /img URL from the worker — don't double-wrap
     const img = await loadImage(proxied);
     const MAX = 1024;
     let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
@@ -787,7 +787,7 @@ async function doSearch(){
       brand: data.product.brand,
       category: data.product.category,
       origin: data.product.origin,
-      img: imageUrl ? `${WORKER_URL}/img?url=${encodeURIComponent(imageUrl)}` : "",
+      img: imageUrl,   // worker already returns a proxied /img URL — do NOT wrap again (double-proxy 404s)
       debrandedImg: null,
       debrandPending: !!imageUrl,
       blurb: data.product.blurb || "",
