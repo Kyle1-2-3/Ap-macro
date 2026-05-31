@@ -202,7 +202,7 @@ export function buildCountryUrls(inputUrl) {
 //   1) JSON-LD Product offers   2) <meta product:price:*>   3) embedded JS "price"/"priceCurrency"
 // In layer 3, prefer the pair whose currency matches `wantCur` (skips recommended-product noise
 // and catches geo-redirect bleed).
-export function parseProductHtml(html, wantCur, code) {
+export function parseProductHtml(html, wantCur, code, opts = {}) {
   const out = { price:null, currency:null, image:null, name:null };
   if (!html) return out;
   // Normalize undecoded HTML entities that sit between a currency symbol and the digits
@@ -455,7 +455,7 @@ export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch) {
 }
 
 // Scrape one URL then verify (product code present + currency matches the country).
-export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch) {
+export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch, structuredOnly = false) {
   if (!fcKey) return { ok:false, country, reason:"No Firecrawl key" };
   const wantCur = CURRENCY_OF[country];
   const got = await fcGetHtml(targetUrl, country, fcKey, fetchImpl);
@@ -463,7 +463,7 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   const html = got.html;
   if (code && !htmlHasCode(html, code)) return { ok:false, country, reason:"Product code not on page", url:targetUrl };
 
-  const parsed = parseProductHtml(html, wantCur, code);
+  const parsed = parseProductHtml(html, wantCur, code, { structuredOnly });
   if (!parsed.price) return { ok:false, country, reason:"No price found", url:targetUrl };
   // Strict: a price with unknown/mismatched currency is NOT trusted (prevents stray numbers
   // like a year being accepted). Genuine extractions always set currency to the country currency.
@@ -483,11 +483,11 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
 // candidates fail and a visionFn is supplied, fall back to reading a screenshot of the most
 // likely URL (the first candidate). The vision result passes the SAME currency + sanity gate,
 // so a wrong read can only fail, never mislead. visionFn(url, country, wantCur) -> {price,currency}|null
-export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch, visionFn = null) {
+export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch, visionFn = null, structuredOnly = false) {
   if (!candidateUrls || !candidateUrls.length) return { ok:false, country, reason:"No URL for country" };
   let last = { ok:false, country, reason:"No candidate verified" };
   for (const u of candidateUrls) {
-    const r = await scrapeOne(u, country, code, fcKey, fetchImpl);
+    const r = await scrapeOne(u, country, code, fcKey, fetchImpl, structuredOnly);
     if (r.ok) return r;
     last = r;
   }
@@ -557,6 +557,7 @@ function inputCountryOf(inputUrl) {
 export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = null) {
   const code = extractCode(inputUrl);
   const targets = buildCountryUrls(inputUrl);  // may be {} when the URL has no locale segment
+  let isDemandware = false;  // set true once we detect the platform, to suppress text-guessing
 
   // Discovery: read hreflang off the input page → authoritative per-country product URLs straight
   // from the site (no guessing). This is also the ONLY discovery path for locale-less URLs like
@@ -580,7 +581,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
         // URLs (which carry clean JSON-LD) ahead of the consumer-PDP candidates. The same
         // currency + sanity + outlier gates still apply, so a bad controller read can only fail.
         const dw = detectDemandware(got.html, inputUrl);
-        if (dw) applyDemandwareTargets(targets, dw, code);
+        if (dw) { applyDemandwareTargets(targets, dw, code); isDemandware = true; }
       }
     } catch { /* keep whatever candidates we have */ }
   }
