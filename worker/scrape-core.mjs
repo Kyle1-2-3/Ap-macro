@@ -491,11 +491,47 @@ export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch) {
   return { html };
 }
 
+function isDemandwareControllerUrl(targetUrl) {
+  try {
+    const u = new URL(targetUrl);
+    return /\/on\/demandware\.store\/Sites-[^/]+-Site\/[^/]+\/Product-Show$/i.test(u.pathname)
+      && u.searchParams.has("pid");
+  } catch {
+    return false;
+  }
+}
+
+async function directGetHtml(targetUrl, fetchImpl = fetch) {
+  try {
+    const res = await fetchImpl(targetUrl, {
+      headers: {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      },
+    });
+    if (!res.ok) return { error: `Direct ${res.status}` };
+    const html = await res.text();
+    if (!html) return { error: "Direct no HTML" };
+    return { html };
+  } catch (e) {
+    return { error: "Direct fetch: " + String(e).slice(0, 60) };
+  }
+}
+
 // Scrape one URL then verify (product code present + currency matches the country).
 export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch, structuredOnly = false) {
   if (!fcKey) return { ok:false, country, reason:"No Firecrawl key" };
   const wantCur = CURRENCY_OF[country];
-  const got = await fcGetHtml(targetUrl, country, fcKey, fetchImpl);
+  let got = null;
+  let viaFetch = "firecrawl";
+  if (structuredOnly && isDemandwareControllerUrl(targetUrl)) {
+    const direct = await directGetHtml(targetUrl, fetchImpl);
+    if (!direct.error) {
+      got = direct;
+      viaFetch = "direct";
+    }
+  }
+  got ||= await fcGetHtml(targetUrl, country, fcKey, fetchImpl);
   if (got.error) return { ok:false, country, reason:got.error, url:targetUrl };
   const html = got.html;
   if (code && !htmlHasCode(html, code)) return { ok:false, country, reason:"Product code not on page", url:targetUrl };
@@ -513,7 +549,7 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   if (!(usd >= 20 && usd <= 1_000_000))
     return { ok:false, country, reason:`Price out of range (${parsed.price} ${wantCur})`, url:targetUrl };
 
-  return { ok:true, country, price:parsed.price, currency:wantCur, image:parsed.image, name:parsed.name, url:targetUrl, via:"text" };
+  return { ok:true, country, price:parsed.price, currency:wantCur, image:parsed.image, name:parsed.name, url:targetUrl, via:viaFetch === "direct" ? "direct" : "text" };
 }
 
 // Try each candidate locale URL for a country until one verifies. If ALL text-extraction
