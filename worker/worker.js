@@ -373,9 +373,12 @@ async function handleScrape(request, env, url) {
   if (!FIRECRAWL_KEY) return json({ found: false, error: "Server missing FIRECRAWL_API_KEY secret" }, 500);
 
   // 24h cache (Cloudflare Cache API; guarded so node tests still run).
+  // refresh:true (or nocache:true) bypasses a cached hit AND overwrites it — needed because the
+  // tracking-param stripper makes ?nocache=... in the URL useless for cache-busting (same key).
+  const noCache = body.refresh === true || body.nocache === true;
   const cache = (typeof caches !== "undefined" && caches.default) ? caches.default : null;
   const cacheKey = `https://cache.scrape/?u=${encodeURIComponent(inputUrl)}&c=${homeCurrency}`;
-  if (cache) { const hit = await cache.match(cacheKey); if (hit) return hit; }
+  if (cache && !noCache) { const hit = await cache.match(cacheKey); if (hit) return hit; }
 
   // Core: scrape all 8 official country pages directly, verify, never fake.
   // visionFn = fallback used ONLY when text extraction fails for a country: screenshot the page
