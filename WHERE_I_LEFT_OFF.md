@@ -16,9 +16,12 @@ Gucci·YSL·Moncler·Burberry·Tiffany 등은 안 됩니다. 배포·푸시는 �
 ## 실측 결과 (실제 Firecrawl, 2026-05-30 저녁 — 파서 수정 후) — 정확한 숫자
 | 브랜드 | 결과 | 비고 |
 |---|---|---|
-| Bottega Veneta | **8/8** ✅ | name+image 포함. 라이브 재확인(통화 backfill 수정 후) |
-| Gucci | **8/8** ✅ | **0→5→8/8 라이브 확인.** 엔티티 디코드+product-price 우선+waitFor 10s로 유로존 해결 |
-(Bottega+Gucci 둘 다 같은 실행에서 8/8 확인. 통화 backfill 회귀수정 커밋 후.)
+| Bottega Veneta | **8/8** ✅ | name+image 포함 |
+| Gucci | **8/8** ✅ | 0→5→8/8. 엔티티디코드+product-price우선+waitFor10s |
+| Balenciaga | **8/8** ✅ | **0→8/8.** 로케일없는 URL에 경로삽입(/ja-jp/) 후보 생성으로 해결 |
+| Loewe | 0/8 ⚠️ | `/usa/en/` 3글자 국가코드라 후보생성 빗나감 — 진단/수정 중 |
+| Hermès | 1/8 ❌ | 강력 봇차단(403) — 구조적 한계 |
+(Bottega·Gucci·Balenciaga 3개 같은 실행에서 8/8 라이브 확인. 모든 수정 비회귀.)
 | Hermès | **1/8** ❌ | 강력 봇차단(403 "enable JS"/"You have been blocked"); stealth로도 막힘 |
 | Burberry | 0/8 ❌ | 테스트 URL이 404(존재X). 서브도메인형+차단. 진짜 URL로 재확인 필요 |
 | Prada | 미확정 | 테스트 URL이 내가 지어낸 것이라 불공정. 진짜 URL로 재측정 필요 |
