@@ -139,6 +139,12 @@ export function buildCountryUrls(inputUrl) {
 export function parseProductHtml(html, wantCur, code) {
   const out = { price:null, currency:null, image:null, name:null };
   if (!html) return out;
+  // Normalize undecoded HTML entities that sit between a currency symbol and the digits
+  // (e.g. Gucci renders "€&nbsp;3.200"). Without this the symbol-based price regex misses.
+  html = html
+    .replace(/&nbsp;|&#160;|&#xa0;|&#x00a0;/gi, " ")
+    .replace(/&euro;/gi, "€").replace(/&pound;/gi, "£").replace(/&yen;/gi, "¥")
+    .replace(/&dollar;/gi, "$").replace(/&amp;/gi, "&");
 
   // Layer 1: JSON-LD
   const blocks = [...html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)];
@@ -192,18 +198,31 @@ export function parseProductHtml(html, wantCur, code) {
 
   // Layer 4: visible currency-symbol string (rendered pages often show price only as text,
   // e.g. "$3,950" / "€ 2.650" / "¥ 510,400"). Keyed strictly to THIS country's symbol, so
-  // there's no currency ambiguity; the most-frequent amount wins (the real price repeats,
-  // recommended-item prices vary).
+  // there's no currency ambiguity. PRIORITY 1: a price marked as the main product price
+  // (data-testid/class/itemprop containing "product...price" or itemprop="price") — this
+  // beats the frequency heuristic, which otherwise picks a repeated recommended-item price
+  // (e.g. Gucci shows the real €3.200 once but a related bag €2.900 five times). PRIORITY 2:
+  // most-frequent symbol amount as a fallback.
   if (out.price == null && wantCur) {
     const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"₩", CHF:"(?:CHF|SFr\\.?)" };
     const sym = SYM[wantCur];
     if (sym) {
-      const rx = new RegExp(sym + "\\s?([0-9][0-9.,]{1,12})", "g");
-      const counts = {};
-      let m;
-      while ((m = rx.exec(html))) { const p = normPrice(m[1]); if (p) counts[p] = (counts[p]||0) + 1; }
-      const best = Object.entries(counts).sort((a,b) => b[1]-a[1] || a[0]-b[0])[0];
-      if (best) { out.price = parseFloat(best[0]); out.currency = wantCur; }
+      const amount = `${sym}\\s?([0-9][0-9.,]{1,12})`;
+      // Priority 1: a "product price"-tagged element, symbol on either side of the number.
+      const tagged = new RegExp(
+        `(?:product[-_]?price|itemprop=["']price["'][^>]*)[^<>]{0,80}?(?:${amount}|([0-9][0-9.,]{1,12})\\s?${sym})`, "i"
+      );
+      const tm = html.match(tagged);
+      if (tm) { const p = normPrice(tm[1] || tm[2]); if (p) { out.price = p; out.currency = wantCur; } }
+      // Priority 2: most-frequent symbol amount.
+      if (out.price == null) {
+        const rx = new RegExp(amount, "g");
+        const counts = {};
+        let m;
+        while ((m = rx.exec(html))) { const p = normPrice(m[1]); if (p) counts[p] = (counts[p] || 0) + 1; }
+        const best = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+        if (best) { out.price = parseFloat(best[0]); out.currency = wantCur; }
+      }
     }
   }
 
@@ -357,8 +376,10 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
 
   const parsed = parseProductHtml(html, wantCur, code);
   if (!parsed.price) return { ok:false, country, reason:"No price found", url:targetUrl };
-  if (parsed.currency && parsed.currency !== wantCur)
-    return { ok:false, country, reason:`Currency ${parsed.currency}≠${wantCur}`, url:targetUrl };
+  // Strict: a price with unknown/mismatched currency is NOT trusted (prevents stray numbers
+  // like a year being accepted). Genuine extractions always set currency to the country currency.
+  if (parsed.currency !== wantCur)
+    return { ok:false, country, reason:`Currency ${parsed.currency||"unknown"}≠${wantCur}`, url:targetUrl };
 
   return { ok:true, country, price:parsed.price, currency:wantCur, image:parsed.image, name:parsed.name, url:targetUrl };
 }
