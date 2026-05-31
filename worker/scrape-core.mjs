@@ -269,6 +269,19 @@ export function parseProductHtml(html, wantCur, code) {
       if (hit) out.image = hit;
     }
   }
+  // Last-resort image: some sites use a different code in the URL than in the image filename
+  // (e.g. Balenciaga en-ca URL code 813472606 but image code 7897792AA4V1000). When code-matching
+  // fails, take the largest-looking product image from a media/asset/dam CDN, skipping icons,
+  // logos, sprites, swatches and tiny thumbnails. It's still an image from THIS product page.
+  if (!out.image) {
+    const urls = [...new Set(html.match(/https?:\/\/[^"'\s)]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s)]*)?/gi) || [])];
+    const cdn = urls.filter(u => /\b(dam|asset|assets|media|cdn|images?|scene7)\b/i.test(u)
+      && !/(logo|icon|sprite|swatch|favicon|placeholder|flag|badge)/i.test(u)
+      && !/(thumbnail|thumb|small|mini|micro|\b\d{2,3}x\d{2,3}\b)/i.test(u));
+    // Prefer an explicitly large rendition if present, else the first qualifying CDN image.
+    const big = cdn.find(u => /\b(large|zoom|original|2048|1600|1200|hero|medium)\b/i.test(u));
+    if (big || cdn[0]) out.image = big || cdn[0];
+  }
 
   // Name — fall back to the first <h1> when structured data didn't supply one.
   if (!out.name) {
