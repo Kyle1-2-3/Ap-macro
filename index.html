@@ -165,8 +165,9 @@
   .bar-track{height:16px;position:relative}
   .bar-fill{height:100%;background:#cccccc}
   .bar-fill.cheapest{background:var(--ink)}
-  .bar-fill.home{background:repeating-linear-gradient(90deg,var(--ink),var(--ink) 6px,transparent 6px,transparent 10px)}
+  .bar-fill.home{background:var(--ink);opacity:.82}
   .bar-val{font-family:var(--serif);font-size:17px;font-weight:500;text-align:right}
+  .bar-local{display:block;margin-top:2px;font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.06em;color:var(--ink-soft)}
 
   .table-scroll{overflow-x:auto;margin-top:46px}
   table{border-collapse:collapse;width:100%;min-width:600px;font-family:var(--sans);font-size:14px}
@@ -957,7 +958,7 @@ function renderResults(){
     return `<div class="bar-row">
       <div class="cy"><span class="cc">${r.cc}</span><span class="nm">${esc(cname(r.country))}</span>${r.isHome?`<span class="you-tag">${t('youTag')}</span>`:''}</div>
       <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
-      <div class="bar-val">${fmt(r.home, homeCur())}</div>
+      <div class="bar-val">${fmt(r.home, homeCur())}${r.localCur!==homeCur()?`<span class="bar-local">${fmt(r.local, r.localCur)}</span>`:''}</div>
     </div>`;
   }).join("")}</div>`;
 
