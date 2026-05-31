@@ -279,6 +279,7 @@
         <div class="search-field">
           <input id="q" type="url" data-i18n-ph="qPh" placeholder="e.g. https://www.prada.com/us/en/women/bags/..." autocomplete="off">
           <button id="goBtn" data-i18n="goBtn">Compare Prices</button>
+          <button id="refreshBtn" data-i18n="refreshBtn" title="Re-scrape, ignoring the cached result">Refresh</button>
         </div>
         <div class="search-msg" id="searchMsg"></div>
       </div>
@@ -452,6 +453,7 @@ const STR = {
   prodP:{en:`Paste the URL of any product from an official brand website. We'll scrape the name, photo, and price — then compare it across 8 countries.`, ja:`公式ブランドサイトの商品URLを貼り付けてください。商品名・写真・価格を自動で取得し、8か国で比較します。`},
   qPh:{en:"e.g. https://www.prada.com/us/en/women/bags/...", ja:"例：https://www.prada.com/jp/ja/women/bags/..."},
   goBtn:{en:"Compare Prices", ja:"価格を比較する"},
+  refreshBtn:{en:"Refresh", ja:"再取得"},
   honestOverline:{en:"03 — The Honest Question", ja:"03 — 正直な問い"},
   honestH2:{en:"Is it the object — or the name?", ja:"モノそのもの？それとも名前？"},
   verdictOverline:{en:"04 — The Verdict", ja:"04 — 結論"},
@@ -739,7 +741,7 @@ async function debrandFromUrl(imageUrl){
 }
 
 /* ---- main search flow ---- */
-async function doSearch(){
+async function doSearch(force){
   const url = $("#q").value.trim();
   if(!url){ $("#searchMsg").textContent = t('errInvalidUrl'); return; }
 
@@ -768,7 +770,7 @@ async function doSearch(){
     const res = await fetch(`${WORKER_URL}/scrape`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, homeCurrency: homeCur() })
+      body: JSON.stringify({ url, homeCurrency: homeCur(), refresh: force === true })
     });
     const data = await res.json();
     clearInterval(loadTimer);
@@ -997,8 +999,9 @@ function renderResults(){
 }
 
 /* ---- init ---- */
-$("#goBtn").onclick = doSearch;
-$("#q").addEventListener("keydown", e => { if(e.key === "Enter") doSearch(); });
+$("#goBtn").onclick = () => doSearch(false);
+$("#refreshBtn").onclick = () => doSearch(true);
+$("#q").addEventListener("keydown", e => { if(e.key === "Enter") doSearch(false); });
 $("#langToggle").onclick = () => setLang(lang === "ja" ? "en" : "ja");
 applyLang();
 </script>
