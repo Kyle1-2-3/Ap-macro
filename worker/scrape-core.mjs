@@ -226,6 +226,16 @@ export function parseProductHtml(html, wantCur, code) {
     }
   }
 
+  // Currency backfill: a price found via itemprop/meta may have NO priceCurrency (e.g. Bottega:
+  // `itemprop="price" content="1100.00"> $ 1,100`). The strict gate rejects unknown currency, so
+  // confirm the country's own currency symbol/code is actually on the page, then set it. This
+  // keeps the geo-redirect guard intact — a page showing only "$" is never accepted as e.g. JPY.
+  if (out.price != null && !out.currency && wantCur) {
+    const PRES = { USD:/\$|USD/, CAD:/\$|CAD/, EUR:/€|EUR/, GBP:/£|GBP/, JPY:/[¥￥]|JPY/, KRW:/₩|KRW/, CHF:/CHF|SFr/i };
+    const re = PRES[wantCur];
+    if (re && re.test(html)) out.currency = wantCur;
+  }
+
   // Image — try og:image first; if absent (e.g. Bottega has no OG/JSON-LD), fall back to an
   // <img>/srcset URL whose filename contains the product code (so it's THIS product, not a
   // recommended item). codeNeedles() gives the meaningful code tokens.
