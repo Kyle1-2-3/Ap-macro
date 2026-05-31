@@ -94,12 +94,13 @@ passed down, so we don't re-fetch.
   (CA also tries `fr_CA`; CH also `fr_CH`/`it_CH`/`en_CH` — same "first that verifies wins" pattern
   the codebase already uses for locale variants.)
 
-- `parseDemandware(html, wantCur) -> { price, currency } | null`
-  Parse the controller response. Priority: (1) `itemprop="price"` / `priceCurrency`; (2) the
-  Demandware price JSON shape `"sales": { "value": N, "currency": "XXX" }` and `"list"`; choose
-  **sales** if present else **list** (consistent sale-vs-regular policy across countries — fixes
-  the apples-vs-oranges problem too). Reject anything that isn't a formatted price (dodges the
-  10.0 / shipping noise seen in the probe).
+- ~~`parseDemandware`~~ **NOT NEEDED — verified 2026-05-31.** Unlike the consumer SPA PDP (zero
+  JSON-LD), the `Product-Show` controller response contains a clean JSON-LD `Product` block with
+  `offers.price` + `priceCurrency` (e.g. `"price":"1225.00","priceCurrency":"USD"`). The
+  **existing `parseProductHtml`** already extracts the correct value from it — confirmed against
+  saved fixtures: US → 1225 USD, KR → 1700000 KRW, both with the right product name. So Layer 0
+  only needs to build the controller URL and feed it to the existing `scrapeOne` path (fetch +
+  parse + currency/sanity gates). No new parser, no sale-vs-list policy code.
 
 ### Reuse the existing safety gates
 
@@ -129,7 +130,8 @@ then vision, then honest blank. **No new failure mode is introduced; Layer 0 can
 
 Offline (saved HTML fixtures, no network):
 - `detectDemandware` returns siteId `Rimowa` for the Rimowa PDP; returns null for the Prada PDP.
-- `parseDemandware` on the saved US controller HTML → 1225 USD; KR → 1700000 KRW.
+- `parseProductHtml` on the saved US controller HTML → 1225 USD; KR → 1700000 KRW (reusing the
+  existing JSON-LD layer; no new parser).
 - `parseProductHtml` (Prada) unchanged — exact same numbers as today (regression lock).
 
 Live (deployed worker / local node with Firecrawl key):
