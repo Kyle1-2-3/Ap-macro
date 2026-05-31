@@ -154,6 +154,48 @@ export function buildCountryUrls(inputUrl) {
 //   1) JSON-LD Product offers   2) <meta product:price:*>   3) embedded JS "price"/"priceCurrency"
 // In layer 3, prefer the pair whose currency matches `wantCur` (skips recommended-product noise
 // and catches geo-redirect bleed).
+// The "style" code = the part of a product code shared by all colour variants of the same model.
+// Brands embed it in image filenames and per-colour SKUs (Balenciaga: 7897792ACKL9220 → 7897792;
+// the URL may instead carry a group id like 813472606 that is NOT in the price objects). We derive
+// it from the longest digit-run (>=6) that appears in BOTH the page's SKUs/image names, preferring
+// one consistent with the input `code`. Returns null when no reliable style code is found.
+export function stylePrefix(html, code) {
+  // candidate alphanumeric tokens that look like SKUs/style codes (>=8 chars, has letters+digits)
+  const toks = html.match(/\b[0-9]{5,}[A-Z0-9]{2,}\b/g) || [];
+  const prefixes = toks.map(t => (t.match(/^\d{6,}/) || [])[0]).filter(Boolean);
+  if (!prefixes.length) return null;
+  // If the input code itself contains a 6+ digit run that appears among prefixes, trust it.
+  const codeRun = String(code || "").match(/\d{6,}/);
+  if (codeRun && prefixes.includes(codeRun[0])) return codeRun[0];
+  // Otherwise pick the most frequent prefix on the page (the main product repeats across colours).
+  const cnt = {};
+  for (const p of prefixes) cnt[p] = (cnt[p] || 0) + 1;
+  const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+  return (top && top[1] >= 2) ? top[0] : null;
+}
+
+// Collect currency-symbol prices on the page that sit within ~600 chars of a SKU of `style`
+// (same model, any colour). Returns an array of numbers in `wantCur`.
+export function sameStylePrices(html, style, wantCur) {
+  const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"₩", CHF:"(?:CHF|SFr\\.?)" };
+  const sym = SYM[wantCur]; if (!sym) return [];
+  const out = [];
+  // SKU occurrences of this style
+  const skuRe = new RegExp(style + "[A-Z0-9]{2,}", "g");
+  const priceRe = new RegExp(sym + "\\s?([0-9][0-9.,]{2,12})", "g");
+  // gather all price positions once
+  const prices = []; let pm;
+  while ((pm = priceRe.exec(html))) { const v = normPrice(pm[1]); if (v) prices.push({ v, at: pm.index }); }
+  if (!prices.length) return [];
+  let sm; const skuAt = [];
+  while ((sm = skuRe.exec(html))) skuAt.push(sm.index);
+  if (!skuAt.length) return [];
+  for (const p of prices) {
+    if (skuAt.some(s => Math.abs(s - p.at) <= 600)) out.push(p.v);
+  }
+  return out;
+}
+
 export function parseProductHtml(html, wantCur, code) {
   const out = { price:null, currency:null, image:null, name:null };
   if (!html) return out;
@@ -164,8 +206,22 @@ export function parseProductHtml(html, wantCur, code) {
     .replace(/&euro;/gi, "€").replace(/&pound;/gi, "£").replace(/&yen;/gi, "¥")
     .replace(/&dollar;/gi, "$").replace(/&amp;/gi, "&");
 
+  // Layer 0: same-style representative price (B1). A product page often lists the SAME bag in
+  // several colours, each its own offer with its own price (e.g. Balenciaga KR: ₩5.9M beige,
+  // ₩4.92M sesame, ₩5.21M dark-noix … all style 7897792). The old "first itemprop price" grabbed
+  // an arbitrary colour. Instead: find the product's STYLE code (the leading digits shared by the
+  // image filename / SKUs, e.g. 7897792), collect every currency-symbol price that sits near a SKU
+  // of that same style, and take the LOWEST (the base colour) — consistent across all countries.
+  // Only fires when we can both identify a style code AND find >=2 same-style prices; otherwise
+  // falls through to the existing layers unchanged (fully non-regressive).
+  const style = stylePrefix(html, code);
+  if (style && wantCur) {
+    const styled = sameStylePrices(html, style, wantCur);
+    if (styled.length >= 2) { out.price = Math.min(...styled); out.currency = wantCur; }
+  }
+
   // Layer 1: JSON-LD
-  const blocks = [...html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)];
+  const blocks = out.price != null ? [] : [...html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)];
   for (const b of blocks) {
     let data; try { data = JSON.parse(b[1].trim()); } catch { continue; }
     const arr = Array.isArray(data) ? data : (data["@graph"] || [data]);
