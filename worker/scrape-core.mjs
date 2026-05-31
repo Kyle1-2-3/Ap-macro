@@ -125,6 +125,11 @@ export function extractCode(productUrl) {
     let last = (parts[parts.length-1] || "").replace(/\.(html?|aspx?)$/i, "");
     const pSep = last.match(/[-_]p[-_]([A-Za-z0-9]+)$/i);   // "name-p-CODE"
     if (pSep) return pSep[1];
+    const tail = last.match(/(?:^|[-_])([A-Za-z0-9]{8,})$/);
+    if (tail) {
+      const code = tail[1];
+      if (/\d/.test(code) && last.length > code.length + 6) return code;
+    }
     return last;
   } catch { return ""; }
 }

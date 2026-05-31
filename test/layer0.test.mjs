@@ -7,6 +7,7 @@ import {
   detectDemandware,
   demandwareControllerUrls,
   applyDemandwareTargets,
+  extractCode,
   parseProductHtml,
 } from "../worker/scrape-core.mjs";
 
@@ -27,6 +28,11 @@ test("detectDemandware returns null for a non-Demandware page (Prada)", () => {
   const html = fx("prada_pdp_jp.html");
   const dw = detectDemandware(html, "https://www.prada.com/jp/ja/p/x/P29C26_195X_F0442_S_OOO");
   assert.equal(dw, null);
+});
+
+test("extractCode returns the terminal SKU from slugged Balenciaga URLs", () => {
+  const url = "https://www.balenciaga.com/en-ca/techwear-cut-out-bodysuit-burgundy-aqua-A002EHTUVN78104.html";
+  assert.equal(extractCode(url), "A002EHTUVN78104");
 });
 
 // --- Task 2: demandwareControllerUrls ---
