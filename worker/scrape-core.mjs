@@ -415,7 +415,7 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   if (!(usd >= 20 && usd <= 1_000_000))
     return { ok:false, country, reason:`Price out of range (${parsed.price} ${wantCur})`, url:targetUrl };
 
-  return { ok:true, country, price:parsed.price, currency:wantCur, image:parsed.image, name:parsed.name, url:targetUrl };
+  return { ok:true, country, price:parsed.price, currency:wantCur, image:parsed.image, name:parsed.name, url:targetUrl, via:"text" };
 }
 
 // Try each candidate locale URL for a country until one verifies. If ALL text-extraction
@@ -533,7 +533,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   let image = null, name = null;
   for (const r of settled) {
     if (r.ok) {
-      prices[r.country] = { price:r.price, currency:r.currency };
+      prices[r.country] = { price:r.price, currency:r.currency, via:r.via || "text" };
       if (!image && r.image) image = r.image;
       if (!name && r.name) name = r.name;
     } else {

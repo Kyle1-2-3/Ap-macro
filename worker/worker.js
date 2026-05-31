@@ -396,7 +396,7 @@ async function handleScrape(request, env, url) {
   const rates = (await ratesPromise) || fallbackRates(homeCurrency);
   const prices = {}, localPrices = {}, homePrices = {};
   for (const [country, info] of Object.entries(core.prices)) {
-    prices[country] = { price: info.price, currency: info.currency, available: true };
+    prices[country] = { price: info.price, currency: info.currency, available: true, via: info.via || "text" };
     localPrices[country] = info.price;
     const rate = rates[info.currency];
     if (typeof rate === "number" && rate > 0) homePrices[country] = Math.round(info.price / rate);
