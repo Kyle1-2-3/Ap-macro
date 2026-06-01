@@ -4,11 +4,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
+  detectGlobalE,
   detectDemandware,
   demandwareControllerUrls,
   applyDemandwareTargets,
   extractCode,
   parseProductHtml,
+  scrapeCountry,
 } from "../worker/scrape-core.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -28,6 +30,30 @@ test("detectDemandware returns null for a non-Demandware page (Prada)", () => {
   const html = fx("prada_pdp_jp.html");
   const dw = detectDemandware(html, "https://www.prada.com/jp/ja/p/x/P29C26_195X_F0442_S_OOO");
   assert.equal(dw, null);
+});
+
+test("detectGlobalE finds a region-gated storefront and merchant metadata", () => {
+  const html = `
+    <link rel="preconnect" href="https://web.global-e.com">
+    <link rel="preload" as="style" href="https://gepi.global-e.com/includes/css/806">
+    <script id="globaleScript">
+      var geStoreCode = 'ww';
+      var geStoreCodeInstance = 'maisonkitsune.com';
+      var gePreferedCulture = 'en-US';
+      (function () {
+        var s = document.createElement('script');
+        s.src = '//gepi.global-e.com/includes/js/806';
+      })();
+    </script>
+    <script>var algoliaConfig = {"country_cookie_name":"GlobalE_Data"};</script>
+  `;
+  const ge = detectGlobalE(html);
+  assert.ok(ge, "should detect Global-e");
+  assert.equal(ge.merchantId, "806");
+  assert.equal(ge.storeCode, "ww");
+  assert.equal(ge.instanceCode, "maisonkitsune.com");
+  assert.equal(ge.preferredCulture, "en-US");
+  assert.equal(ge.cookieName, "GlobalE_Data");
 });
 
 test("extractCode returns the terminal SKU from slugged Balenciaga URLs", () => {
@@ -94,6 +120,138 @@ test("applyDemandwareTargets is a no-op when dw is null", () => {
   const targets = { "United States": ["https://x/y.html"] };
   const out = applyDemandwareTargets(targets, null, "83273171");
   assert.deepEqual(out, targets);
+});
+
+test("Global-e region negotiation feeds Firecrawl with a market cookie", async () => {
+  const geHtml = `
+    <link rel="preconnect" href="https://web.global-e.com">
+    <link rel="preconnect" href="https://gepi.global-e.com">
+    <link rel="stylesheet" id="GEPIStyles" type="text/css" href="//gepi.global-e.com/includes/css/806">
+    <script id="globaleScript">
+      var geStoreCode = 'ww';
+      var geStoreCodeInstance = 'maisonkitsune.com';
+      var gePreferedCulture = 'en-US';
+      (function () {
+        var s = document.createElement('script');
+        s.src = '//gepi.global-e.com/includes/js/806';
+      })();
+    </script>
+    <script>var algoliaConfig = {"country_cookie_name":"GlobalE_Data"};</script>
+  `;
+  const targetUrl = "https://maisonkitsune.com/ww/bomber-jacket-beluga-6930e1c84cce7.html";
+  const calls = [];
+  const mockFetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    if (String(url).includes("/includes/js/806")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => 'var n={}; n.GeBaseUrl="//gepi.global-e.com/"; n.SessionId="SID123";',
+        headers: { get: () => null },
+      };
+    }
+    if (String(url).includes("/Localize/SetLocalize/SID123")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '({"CountryCode":"CA","CurrencyCode":"CAD","CultureCode":"en-GB"})',
+        headers: {
+          get: (name) => (String(name).toLowerCase() === "set-cookie"
+            ? 'GlobalE_Data={"countryISO":"CA","currencyCode":"CAD","cultureCode":"en-GB"}; path=/; domain=global-e.com'
+            : null),
+        },
+      };
+    }
+    if (String(url).includes("api.firecrawl.dev/v2/scrape")) {
+      const body = JSON.parse(init.body);
+      assert.equal(body.url, targetUrl);
+      assert.equal(body.headers.Cookie, 'GlobalE_Data={"countryISO":"CA","currencyCode":"CAD","cultureCode":"en-GB"}');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: { html: '<html><body><div data-product-sku="6930e1c84cce7"><span class="value" content="250.00">CA$250</span></div></body></html>' },
+        }),
+      };
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+  const out = await scrapeCountry([targetUrl], "Canada", "6930e1c84cce7", "dummy-firecrawl-key", mockFetch, null, false, {
+    kind: "global-e",
+    merchantId: "806",
+    storeCode: "ww",
+    instanceCode: "maisonkitsune.com",
+    preferredCulture: "en-US",
+    cookieName: "GlobalE_Data",
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.price, 250);
+  assert.equal(out.currency, "CAD");
+  assert.equal(out.via, "text");
+  assert.ok(calls.some((c) => c.url.includes("/includes/js/806")));
+  assert.ok(calls.some((c) => c.url.includes("/Localize/SetLocalize/SID123")));
+  assert.ok(calls.some((c) => c.url.includes("api.firecrawl.dev/v2/scrape")));
+});
+
+test("Global-e region negotiation reports unresolved browser-state storefronts explicitly", async () => {
+  const geHtml = `
+    <script id="globaleScript">
+      var geStoreCode = 'ww';
+      var geStoreCodeInstance = 'maisonkitsune.com';
+      var gePreferedCulture = 'en-US';
+      (function () {
+        var s = document.createElement('script');
+        s.src = '//gepi.global-e.com/includes/js/807';
+      })();
+    </script>
+    <script>var algoliaConfig = {"country_cookie_name":"GlobalE_Data"};</script>
+  `;
+  const targetUrl = "https://maisonkitsune.com/ww/bomber-jacket-beluga-6930e1c84cce7.html";
+  const calls = [];
+  const mockFetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    if (String(url).includes("/includes/js/807")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => 'var n={}; n.GeBaseUrl="//gepi.global-e.com/"; n.SessionId="SID124";',
+        headers: { get: () => null },
+      };
+    }
+    if (String(url).includes("/Localize/SetLocalize/SID124")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '({"CountryCode":"CA","CurrencyCode":"CAD","CultureCode":"en-GB"})',
+        headers: {
+          get: (name) => (String(name).toLowerCase() === "set-cookie"
+            ? 'GlobalE_Data={"countryISO":"CA","currencyCode":"CAD","cultureCode":"en-GB"}; path=/; domain=global-e.com'
+            : null),
+        },
+      };
+    }
+    if (String(url).includes("api.firecrawl.dev/v2/scrape")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: { html: '<html><body><div data-product-sku="6930e1c84cce7"><span class="value" content="450.00">450 EUR</span></div></body></html>' },
+        }),
+      };
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+  const out = await scrapeCountry([targetUrl], "Canada", "6930e1c84cce7", "dummy-firecrawl-key", mockFetch, null, false, {
+    kind: "global-e",
+    merchantId: "807",
+    storeCode: "ww",
+    instanceCode: "maisonkitsune.com",
+    preferredCulture: "en-US",
+    cookieName: "GlobalE_Data",
+  });
+  assert.equal(out.ok, false);
+  assert.ok(out.reason.startsWith("Region-gated storefront not localized:"), out.reason);
+  assert.ok(calls.some((c) => c.url.includes("/Localize/SetLocalize/SID124")));
 });
 
 // --- structuredOnly: read structured price markup but suppress loose text guessing ---

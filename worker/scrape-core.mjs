@@ -59,6 +59,78 @@ export function detectDemandware(html, inputUrl) {
   return { siteId: m[1], origin };
 }
 
+const GLOBAL_E_SESSION_CACHE = new Map();
+const GLOBAL_E_COOKIE_CACHE = new Map();
+
+// Detect Global-e / region-gated storefronts. These pages use a browser session state
+// (country + currency cookie) instead of a standalone per-country URL.
+export function detectGlobalE(html) {
+  if (!html) return null;
+  if (!/global-e|gepi\.global-e\.com|GlobalE_Data/i.test(html)) return null;
+  const merchantId = (html.match(/gepi\.global-e\.com\/includes\/(?:js|css)\/(\d+)/i) || [])[1];
+  if (!merchantId) return null;
+  const storeCode = (html.match(/var geStoreCode\s*=\s*'([^']+)'/i) || [])[1] || null;
+  const instanceCode = (html.match(/var geStoreCodeInstance\s*=\s*'([^']+)'/i) || [])[1] || null;
+  const preferredCulture = (html.match(/var gePreferedCulture\s*=\s*'([^']+)'/i) || [])[1] || null;
+  const cookieName = (html.match(/"country_cookie_name"\s*:\s*"([^"]+)"/i) || [])[1] || "GlobalE_Data";
+  return { kind: "global-e", merchantId, storeCode, instanceCode, preferredCulture, cookieName };
+}
+
+async function probeGlobalESession(globalE, fetchImpl = fetch) {
+  if (!globalE?.merchantId) return null;
+  const key = String(globalE.merchantId);
+  if (GLOBAL_E_SESSION_CACHE.has(key)) return GLOBAL_E_SESSION_CACHE.get(key);
+  try {
+    const res = await fetchImpl(`https://gepi.global-e.com/includes/js/${globalE.merchantId}`, {
+      headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
+    });
+    if (!res.ok) return null;
+    const js = await res.text();
+    const sessionId = (js.match(/SessionId="([^"]+)"/) || [])[1] || null;
+    const geBaseUrl = (js.match(/GeBaseUrl="([^"]+)"/) || [])[1] || "//gepi.global-e.com/";
+    const out = sessionId ? { sessionId, geBaseUrl } : null;
+    GLOBAL_E_SESSION_CACHE.set(key, out);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function buildGlobalELocalizeHeaders(globalE, country, fetchImpl = fetch) {
+  if (!globalE?.merchantId) return null;
+  const cacheKey = `${globalE.merchantId}:${country}`;
+  if (GLOBAL_E_COOKIE_CACHE.has(cacheKey)) return GLOBAL_E_COOKIE_CACHE.get(cacheKey);
+  const session = await probeGlobalESession(globalE, fetchImpl);
+  if (!session?.sessionId) return null;
+  const wantCur = CURRENCY_OF[country];
+  const countryISO = COUNTRY_ISO[country];
+  if (!wantCur || !countryISO) return null;
+  try {
+    const base = String(session.geBaseUrl || "https://gepi.global-e.com/").replace(/\/$/, "");
+    const url = `${base}/Localize/SetLocalize/${encodeURIComponent(session.sessionId)}?countryCode=${encodeURIComponent(countryISO)}&currencyCode=${encodeURIComponent(wantCur)}`;
+    const res = await fetchImpl(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
+    });
+    if (!res.ok) return null;
+    const setCookie = res.headers.get("set-cookie") || "";
+    const m = setCookie.match(/GlobalE_Data=([^;]+)/);
+    if (!m) return null;
+    const cookie = `${globalE.cookieName || "GlobalE_Data"}=${m[1]}`;
+    const out = {
+      cookie,
+      headers: {
+        "Cookie": cookie,
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept-Language": `${LANG_OF[country] || "en"},en;q=0.9`,
+      },
+    };
+    GLOBAL_E_COOKIE_CACHE.set(cacheKey, out);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 // Build the standard Demandware product controller URLs for a country (one per locale variant).
 // The controller response carries clean JSON-LD that parseProductHtml already reads correctly.
 export function demandwareControllerUrls(dw, country, sku) {
@@ -506,15 +578,17 @@ export async function mapLimit(items, limit, fn) {
 // returns a 4.5KB "Access Denied" for rawHtml on many brands. Retries transient 408/429/5xx
 // (and network errors) with exponential backoff; these appear randomly under load and are the
 // main cause of non-deterministic, flaky coverage.
-export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch) {
-  const reqBody = JSON.stringify({
+export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch, extraHeaders = null) {
+  const req = {
     url: targetUrl,
     formats: ["html"],
     location: { country: COUNTRY_ISO[country] || "US", languages: [LANG_OF[country] || "en"] },
     proxy: "stealth",
     waitFor: 4000,
     timeout: 40000,
-  });
+  };
+  if (extraHeaders && Object.keys(extraHeaders).length) req.headers = extraHeaders;
+  const reqBody = JSON.stringify(req);
   let res, delay = 1000;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -568,17 +642,19 @@ async function directGetHtml(targetUrl, fetchImpl = fetch) {
 }
 
 // Scrape one URL then verify (product code present + currency matches the country).
-export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch, structuredOnly = false) {
+export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch, structuredOnly = false, extraHeaders = null) {
   if (!fcKey) return { ok:false, country, reason:"No Firecrawl key" };
   const wantCur = CURRENCY_OF[country];
   let got = null;
   let viaFetch = "firecrawl";
-  const direct = await directGetHtml(targetUrl, fetchImpl);
-  if (!direct.error) {
-    got = direct;
-    viaFetch = "direct";
+  if (!extraHeaders) {
+    const direct = await directGetHtml(targetUrl, fetchImpl);
+    if (!direct.error) {
+      got = direct;
+      viaFetch = "direct";
+    }
   }
-  got ||= await fcGetHtml(targetUrl, country, fcKey, fetchImpl);
+  got ||= await fcGetHtml(targetUrl, country, fcKey, fetchImpl, extraHeaders);
   if (got.error) return { ok:false, country, reason:got.error, url:targetUrl };
   const html = got.html;
   if (code && !htmlHasCode(html, code)) return { ok:false, country, reason:"Product code not on page", url:targetUrl };
@@ -603,13 +679,20 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
 // candidates fail and a visionFn is supplied, fall back to reading a screenshot of the most
 // likely URL (the first candidate). The vision result passes the SAME currency + sanity gate,
 // so a wrong read can only fail, never mislead. visionFn(url, country, wantCur) -> {price,currency}|null
-export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch, visionFn = null, structuredOnly = false) {
+export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch, visionFn = null, structuredOnly = false, regionGate = null) {
   if (!candidateUrls || !candidateUrls.length) return { ok:false, country, reason:"No URL for country" };
   let last = { ok:false, country, reason:"No candidate verified" };
-  for (const u of candidateUrls) {
-    const r = await scrapeOne(u, country, code, fcKey, fetchImpl, structuredOnly);
-    if (r.ok) return r;
-    last = r;
+  const regionHeaders = regionGate?.kind === "global-e"
+    ? (await buildGlobalELocalizeHeaders(regionGate, country, fetchImpl))?.headers || null
+    : null;
+  const usedRegionNegotiation = !!regionHeaders;
+  const headerPasses = regionHeaders ? [regionHeaders, null] : [null];
+  for (const headers of headerPasses) {
+    for (const u of candidateUrls) {
+      const r = await scrapeOne(u, country, code, fcKey, fetchImpl, structuredOnly, headers);
+      if (r.ok) return r;
+      last = r;
+    }
   }
   // Vision fallback — only when text failed and a vision reader is available.
   if (visionFn) {
@@ -622,6 +705,9 @@ export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchIm
           return { ok:true, country, price:Number(v.price), currency:wantCur, image:v.image||null, name:v.name||null, url:candidateUrls[0], via:"vision" };
       }
     } catch { /* vision is best-effort */ }
+  }
+  if (usedRegionNegotiation && !last.ok) {
+    return { ...last, reason:`Region-gated storefront not localized: ${last.reason || "No localized price found"}` };
   }
   return last;
 }
@@ -677,6 +763,7 @@ function inputCountryOf(inputUrl) {
 export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = null) {
   const code = extractCode(inputUrl);
   const targets = buildCountryUrls(inputUrl);  // may be {} when the URL has no locale segment
+  let regionGate = null;
 
   // Discovery: read hreflang off the input page → authoritative per-country product URLs straight
   // from the site (no guessing). This is also the ONLY discovery path for locale-less URLs like
@@ -689,6 +776,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
       const direct = await directGetHtml(inputUrl, fetchImpl);
       const got = direct.html ? direct : await fcGetHtml(inputUrl, inCountry, fcKey, fetchImpl);
       if (got.html) {
+        regionGate = detectGlobalE(got.html);
         const hl = parseHreflang(got.html);
         const cc2c = ccToCountry();
         for (const [cc, href] of Object.entries(hl)) {
@@ -717,7 +805,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   // instead of ~200s serial) — critical for Rimowa-class pages where most countries use vision.
   const settled = await mapLimit(
     COUNTRIES, 8,
-    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, false)
+    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, false, regionGate)
   );
   const prices = {}, failed = [];
   let image = null, name = null;
