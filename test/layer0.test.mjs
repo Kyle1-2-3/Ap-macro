@@ -383,3 +383,23 @@ test("scrapeAll seeds the input market from discovery HTML when per-country fetc
   assert.equal(r.prices["South Korea"].price, 380000);
   assert.ok(n < 50, `subrequest ceiling should hold (was ${n})`);
 });
+
+test("scrapeAll drops a market priced under 0.4x the peer median (Le Labo cheap-variant case)", async () => {
+  // A JS-rendered multi-variant page (Le Labo) can leave a cheap travel/refill/sample price as the
+  // only number the parser finds, faking a "cheapest" market. A price under 40% of the peer median
+  // is virtually always such an error, so it must be rejected rather than reported as cheapest.
+  const mk = (cur, price) =>
+    `<script type="application/ld+json">{"@type":"Product","name":"Widget","offers":{"@type":"Offer","price":"${price}","priceCurrency":"${cur}"}}</script><div>ABC123456</div>`;
+  const P = { us: ["USD", "200"], ca: ["CAD", "60"], fr: ["EUR", "185"], it: ["EUR", "185"] }; // CA 60 CAD ≈ $44 ≈ 0.22x median
+  const fakeFetch = async (url) => {
+    const cc = (new URL(url).pathname.split("/")[1] || "").toLowerCase();
+    const v = P[cc];
+    const html = v ? mk(v[0], v[1]) : "<html>no product here</html>";
+    return { ok: true, status: 200, text: async () => html, json: async () => ({}) };
+  };
+  const r = await scrapeAll("https://brand.example.com/us/en/p/widget-ABC123456.html", "FAKEKEY", fakeFetch, null);
+  assert.equal(r.found, true);
+  assert.ok(r.prices["United States"] && r.prices["France"] && r.prices["Italy"], "real-price markets stay");
+  assert.ok(!r.prices["Canada"], "the sub-0.4x cheap variant must be dropped");
+  assert.ok((r.failed || []).some(f => f.country === "Canada" && /out of line/.test(f.reason)), "Canada flagged out of line");
+});

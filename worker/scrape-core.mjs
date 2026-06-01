@@ -958,11 +958,13 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   failed = failed.filter(f => !prices[f.country]);
 
   // Cross-country outlier rejection. A single page can expose several prices (recommended items,
-  // installment amounts, accessories) and the per-page parser may grab the wrong one — e.g. a JP
-  // page showing ¥77,000 (an unrelated item) instead of the bag's real price. Convert every
-  // country's price to USD, take the median, and drop any country whose USD value is wildly off
-  // (<0.3× or >3× the median). The same product can't legitimately be 8× cheaper in one market;
-  // honest "couldn't verify" beats a nonsense number. Needs ≥3 prices to have a trustworthy median.
+  // installment amounts, accessories, or — on heavily JS-rendered multi-variant pages like Le Labo —
+  // a cheap travel/refill/sample/15ml variant when the main price is an unrendered template) and the
+  // per-page parser may grab the wrong one. Convert every country's price to USD, take the median,
+  // and drop any country whose USD value is wildly off (<0.4× or >3× the median). Real same-item
+  // cross-market spreads almost never exceed ~2×, so a market under 40% of the peer median is
+  // virtually always a wrong cheap variant, not a genuine origin advantage — reporting it would fake
+  // a "cheapest" verdict. Honest "couldn't verify" beats a nonsense number. Needs ≥3 prices.
   const usdOf = (info) => info.price * (USD_PER[info.currency] || 0);
   const entries = Object.entries(prices);
   if (entries.length >= 3) {
@@ -970,7 +972,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
     const median = usds[Math.floor(usds.length / 2)];
     for (const [country, v] of entries) {
       const u = usdOf(v);
-      if (u > 0 && (u < median * 0.3 || u > median * 3)) {
+      if (u > 0 && (u < median * 0.4 || u > median * 3)) {
         delete prices[country];
         failed.push({ country, reason: `Price out of line vs other markets ($${Math.round(u)} vs median $${Math.round(median)})` });
       }
