@@ -345,6 +345,19 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     if (out.price && (!wantCur || out.currency === wantCur)) break;
   }
 
+  // Layer 1.5: Shopify variant price. When the URL selects a variant (?variant=ID), read THAT
+  // variant's price from the Shopify product JSON, where it is an integer in cents
+  // ("id":45645131972771,…,"price":49200 → 492.00). This is the exact selected-variant price and
+  // beats the loose visible-$ layer, which can otherwise grab a "$150 USD or more" free-shipping
+  // threshold (seen on Thom Browne). No-op without a variant id or a matching cents value.
+  if (out.price == null && opts.pageUrl) {
+    const vid = (String(opts.pageUrl).match(/[?&]variant=(\d{6,})/) || [])[1];
+    if (vid) {
+      const m = html.match(new RegExp(`"id":${vid}[,"][\\s\\S]{0,200}?"price":(\\d{3,})\\b`));
+      if (m) { const cents = parseInt(m[1], 10); if (cents >= 2000 && cents <= 100000000) out.price = cents / 100; }
+    }
+  }
+
   // Layer 2: meta tags.
   // structuredOnly (Demandware): trust ONLY the Layer-1 JSON-LD Product offer, the single
   // SKU/product-anchored source. On Demandware consumer PDPs the meta/embedded/text layers pick
@@ -911,6 +924,15 @@ function inputCountryOf(inputUrl) {
 export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = null) {
   const code = extractCode(inputUrl);
   const targets = buildCountryUrls(inputUrl);  // may be {} when the URL has no locale segment
+  // Try the input market with the EXACT url the user pasted (query string and all) FIRST, so a
+  // selected ?variant= isn't lost — buildCountryUrls rebuilds locale paths from pathname only and
+  // drops the query, which on Shopify (e.g. Thom Browne) means the per-country page falls back to a
+  // wrong/loose price. The Shopify-variant layer in parseProductHtml needs that ?variant= to resolve.
+  const inputCountry = inputCountryOf(inputUrl);
+  if (inputCountry) {
+    const existing = (targets[inputCountry] || []).filter((u) => u !== inputUrl);
+    targets[inputCountry] = [inputUrl, ...existing];
+  }
   let regionGate = null;
   // Ceiling on outbound fetches so we never trip Cloudflare's per-invocation subrequest limit
   // (≈50 on the free plan). When the budget runs out we stop trying candidates and return what

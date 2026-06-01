@@ -350,6 +350,18 @@ test("parseProductHtml uses the struck original on a markdown in a no-decimal cu
   assert.equal(p.currency, "KRW");
 });
 
+test("parseProductHtml reads the Shopify variant price, not a $150 free-shipping threshold (Thom Browne)", () => {
+  // TB children's cardigan: no JSON-LD Product, real price only in the Shopify variant JSON as cents
+  // ("id":<variant>,"price":49200). The loose visible-$ layer otherwise grabs "$150 USD or more" from
+  // a free-shipping sentence. The URL selects the variant, so read that variant's price directly.
+  const html = `
+    <p>Equivalent purchases of $150 USD or more are eligible for complimentary shipping.</p>
+    <script>var meta = {"product":{"variants":[{"id":45645131972771,"price":49200,"name":"CARDIGAN - MED GREY / 8"}]}};</script>`;
+  const p = parseProductHtml(html, "CAD", "KKC003A-Y3007-035", { pageUrl: "https://www.thombrowne.com/en-ca/products/x-kkc003a?variant=45645131972771" });
+  assert.equal(p.price, 492);
+  assert.equal(p.currency, "CAD");
+});
+
 test("parseProductHtml absolutizes a root-relative JSON-LD image against the page URL", () => {
   // Off-White (Demandware) exposes the product image in JSON-LD as a root-relative path and has no
   // og:image. Without a base URL it can't be proxied (cleanImageUrl drops a relative string), so the
