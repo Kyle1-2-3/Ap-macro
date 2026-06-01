@@ -423,22 +423,25 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // (e.g. Gucci shows the real €3.200 once but a related bag €2.900 five times). PRIORITY 2:
   // most-frequent symbol amount as a fallback.
   if (out.price == null && wantCur && !opts.structuredOnly) {
-    const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"₩", CHF:"(?:CHF|SFr\\.?)" };
+    // KRW is often written with the "원" suffix (e.g. "630,000원") rather than ₩; CHF/EUR are often
+    // suffixed too ("100 CHF", "620 €"). So match the symbol on EITHER side of the number below.
+    const SYM = { USD:"\\$", CAD:"(?:CA\\$|C\\$|\\$)", EUR:"€", GBP:"£", JPY:"[¥￥]", KRW:"(?:₩|원)", CHF:"(?:CHF|SFr\\.?)" };
     const sym = SYM[wantCur];
     if (sym) {
       const amount = `${sym}\\s?([0-9][0-9.,]{1,12})`;
+      const suffixAmount = `([0-9][0-9.,]{1,12})\\s?${sym}`;
       // Priority 1: a "product price"-tagged element, symbol on either side of the number.
       const tagged = new RegExp(
-        `(?:product[-_]?price|itemprop=["']price["'][^>]*)[^<>]{0,80}?(?:${amount}|([0-9][0-9.,]{1,12})\\s?${sym})`, "i"
+        `(?:product[-_]?price|itemprop=["']price["'][^>]*)[^<>]{0,80}?(?:${amount}|${suffixAmount})`, "i"
       );
       const tm = html.match(tagged);
       if (tm) { const p = normPrice(tm[1] || tm[2]); if (p) { out.price = p; out.currency = wantCur; } }
-      // Priority 2: most-frequent symbol amount.
+      // Priority 2: most-frequent amount, symbol on either side (prefix like ₩/$/€ or suffix like 원/€).
       if (out.price == null) {
-        const rx = new RegExp(amount, "g");
+        const rx = new RegExp(`${amount}|${suffixAmount}`, "g");
         const counts = {};
         let m;
-        while ((m = rx.exec(html))) { const p = normPrice(m[1]); if (p) counts[p] = (counts[p] || 0) + 1; }
+        while ((m = rx.exec(html))) { const p = normPrice(m[1] || m[2]); if (p) counts[p] = (counts[p] || 0) + 1; }
         const best = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
         if (best) { out.price = parseFloat(best[0]); out.currency = wantCur; }
       }
@@ -450,7 +453,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // confirm the country's own currency symbol/code is actually on the page, then set it. This
   // keeps the geo-redirect guard intact — a page showing only "$" is never accepted as e.g. JPY.
   if (out.price != null && !out.currency && wantCur) {
-    const PRES = { USD:/\$|USD/, CAD:/\$|CAD/, EUR:/€|EUR/, GBP:/£|GBP/, JPY:/[¥￥]|JPY/, KRW:/₩|KRW/, CHF:/CHF|SFr/i };
+    const PRES = { USD:/\$|USD/, CAD:/\$|CAD/, EUR:/€|EUR/, GBP:/£|GBP/, JPY:/[¥￥]|JPY/, KRW:/₩|KRW|원/, CHF:/CHF|SFr/i };
     const re = PRES[wantCur];
     if (re && re.test(html)) out.currency = wantCur;
   }
