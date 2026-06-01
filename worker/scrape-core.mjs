@@ -644,7 +644,7 @@ async function directGetHtml(targetUrl, fetchImpl = fetch, extraHeaders = null) 
 }
 
 // Scrape one URL then verify (product code present + currency matches the country).
-export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch, structuredOnly = false, extraHeaders = null) {
+export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch, structuredOnly = false, extraHeaders = null, regionLocked = false) {
   if (!fcKey) return { ok:false, country, reason:"No Firecrawl key" };
   const wantCur = CURRENCY_OF[country];
   let got = null;
@@ -654,17 +654,30 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
     got = direct;
     viaFetch = "direct";
   }
-  got ||= await fcGetHtml(targetUrl, country, fcKey, fetchImpl, extraHeaders);
+  if (!got) {
+    if (regionLocked && extraHeaders) {
+      return { ok:false, country, reason:`Region-gated storefront not localized: ${direct.error || "No direct HTML"}`, url:targetUrl };
+    }
+    got = await fcGetHtml(targetUrl, country, fcKey, fetchImpl, extraHeaders);
+  }
   if (got.error) return { ok:false, country, reason:got.error, url:targetUrl };
   const html = got.html;
   if (code && !htmlHasCode(html, code)) return { ok:false, country, reason:"Product code not on page", url:targetUrl };
 
   const parsed = parseProductHtml(html, wantCur, code, { structuredOnly });
-  if (!parsed.price) return { ok:false, country, reason:"No price found", url:targetUrl };
+  if (!parsed.price) {
+    return regionLocked && extraHeaders
+      ? { ok:false, country, reason:"Region-gated storefront not localized: No price found", url:targetUrl }
+      : { ok:false, country, reason:"No price found", url:targetUrl };
+  }
   // Strict: a price with unknown/mismatched currency is NOT trusted (prevents stray numbers
   // like a year being accepted). Genuine extractions always set currency to the country currency.
-  if (parsed.currency !== wantCur)
-    return { ok:false, country, reason:`Currency ${parsed.currency||"unknown"}≠${wantCur}`, url:targetUrl };
+  if (parsed.currency !== wantCur) {
+    const reason = `Currency ${parsed.currency||"unknown"}≠${wantCur}`;
+    return regionLocked && extraHeaders
+      ? { ok:false, country, reason:`Region-gated storefront not localized: ${reason}`, url:targetUrl }
+      : { ok:false, country, reason, url:targetUrl };
+  }
 
   // Sanity range (USD-equivalent): rejects garbage like a concatenated "€193.882.746" that
   // passes the currency check. Bounds are wide enough for any real luxury item ($20–$1M).
@@ -689,7 +702,7 @@ export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchIm
   const headerPasses = regionHeaders ? [regionHeaders, null] : [null];
   for (const headers of headerPasses) {
     for (const u of candidateUrls) {
-      const r = await scrapeOne(u, country, code, fcKey, fetchImpl, structuredOnly, headers);
+      const r = await scrapeOne(u, country, code, fcKey, fetchImpl, structuredOnly, headers, !!regionHeaders);
       if (r.ok) return r;
       last = r;
     }
