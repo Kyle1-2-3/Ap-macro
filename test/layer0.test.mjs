@@ -333,3 +333,16 @@ test("parseProductHtml uses the struck-through original on a Demandware markdown
   assert.equal(p.price, 5190);
   assert.equal(p.currency, "CAD");
 });
+
+test("parseProductHtml uses the struck original on a markdown in a no-decimal currency (KRW)", () => {
+  // KRW content attributes have no ".00"; pairing must still match the current price.
+  const html = `
+    <script type="application/ld+json">{"@type":"Product","offers":{"price":"4074000","priceCurrency":"KRW"}}</script>
+    <div class="product-price"><div class="price"><span>
+      <span class="strike-through list"><span class="value" itemprop="price" content="6790000"> ₩ 6,790,000 </span><span class="d-none"> - Original Price </span></span>
+      <span class="sales"><span class="value" itemprop="price" content="4074000"> ₩ 4,074,000 </span></span>
+    </span></div></div>`;
+  const p = parseProductHtml(html, "KRW", "");
+  assert.equal(p.price, 6790000);
+  assert.equal(p.currency, "KRW");
+});

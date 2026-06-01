@@ -533,17 +533,16 @@ export function extractShopifyRegularPrice(html, currentPrice) {
 // genuine markdown above it. currentPrice is the already-extracted current/sale price.
 export function extractStruckRegularPrice(html, currentPrice) {
   if (!html || !currentPrice) return null;
-  const curContent = currentPrice.toFixed(2);                          // "3114.00"
-  const curGroup = Math.round(currentPrice).toLocaleString("en-US");   // "3,114"
+  // The current price's structured `content` value, with and without the ".00" (KRW/JPY omit it).
+  const intStr = String(Math.round(currentPrice));
+  const curForms = [`content="${currentPrice.toFixed(2)}"`, `content="${intStr}"`, `content="${intStr}.00"`];
   const re = /class="[^"]*(?:strike-through|strikethrough|price-standard|list-price|original-price|old-price|was-price)[^"]*"[^>]*>[\s\S]{0,160}?content="([\d.]+)"/gi;
   let m, best = null;
   while ((m = re.exec(html))) {
     const orig = parseFloat(m[1]);
     if (!(orig > currentPrice) || orig > currentPrice * 20) continue;  // must be a real markdown
-    const after = html.slice(m.index, m.index + 700);                  // same price block follows
-    const paired = after.includes(`content="${curContent}"`)
-      || after.includes(` ${curGroup} `) || after.includes(`>${curGroup}<`) || after.includes(`${curGroup}</`);
-    if (paired) best = (best == null) ? orig : Math.min(best, orig);
+    const after = html.slice(m.index, m.index + 800);                  // same price block follows
+    if (curForms.some((f) => after.includes(f))) best = (best == null) ? orig : Math.min(best, orig);
   }
   return best;
 }
