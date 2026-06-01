@@ -393,6 +393,17 @@ test("parseProductHtml still takes a SKU-filename CDN image as last resort (Bale
   assert.equal(p.image, "https://media.balenciaga.com/dam/images/7897792AA4V1000_F.jpg");
 });
 
+test("parseProductHtml matches an extensionless CDN image by product code (Tom Ford / Amplience)", () => {
+  // Tom Ford serves images from Amplience with NO file extension
+  // (cdn.media.amplience.net/i/tom_ford/FT1362_01A_53MM_A) and exposes them only in JS state, not
+  // JSON-LD/og:image. The .jpg/.png-only URL regexes miss them, so the photo never resolves.
+  const html = `
+    <script>window.__d = {"media":["https://cdn.media.amplience.net/i/tom_ford/FT1362_01A_53MM_A","https://cdn.media.amplience.net/i/tom_ford/FT1362_01A_53MM_B"]};</script>
+    <script type="application/ld+json">{"@type":"Product","name":"PENN Sunglasses","offers":{"@type":"Offer","price":"320","priceCurrency":"EUR"}}</script>`;
+  const p = parseProductHtml(html, "EUR", "FT1362", { pageUrl: "https://www.tomfordfashion.it/it-it/x/FT1362.html" });
+  assert.equal(p.image, "https://cdn.media.amplience.net/i/tom_ford/FT1362_01A_53MM_A");
+});
+
 test("parseProductHtml leaves an already-absolute image URL unchanged", () => {
   const html = `
     <script type="application/ld+json">{"@type":"Product","name":"Tote","image":"https://cdn.example.com/bag.jpg","offers":{"@type":"Offer","price":"452.00","priceCurrency":"USD"}}</script>`;

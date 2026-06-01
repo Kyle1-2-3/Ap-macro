@@ -444,7 +444,18 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     const needles = codeNeedles(code).map(n => n.toLowerCase());
     if (needles.length) {
       const urls = html.match(/https?:\/\/[^"'\s)]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s)]*)?/gi) || [];
-      const hit = urls.find(u => needles.some(n => u.toLowerCase().includes(n)));
+      let hit = urls.find(u => needles.some(n => u.toLowerCase().includes(n)));
+      // Some brands serve images from an EXTENSIONLESS CDN (e.g. Tom Ford via Amplience:
+      // cdn.media.amplience.net/i/tom_ford/FT1362_01A_53MM_A) and expose them only in JS state, so
+      // the .jpg/.png-only regex above misses them. Also accept a code-bearing URL on a known image
+      // CDN/path even without a file extension. The product code in the URL keeps it specific.
+      if (!hit) {
+        const looseUrls = html.match(/https?:\/\/[^"'\s)<>]+/gi) || [];
+        hit = looseUrls.find(u =>
+          /(amplience|scene7|cloudinary|imgix|contentful|akamaized|\/i\/|\/image\/|\/images?\/|demandware\.static|\bdam\b)/i.test(u)
+          && needles.some(n => u.toLowerCase().includes(n))
+          && !NON_PRODUCT_IMG.test(u));
+      }
       if (hit) out.image = hit;
     }
   }
