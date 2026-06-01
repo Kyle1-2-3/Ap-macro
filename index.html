@@ -86,6 +86,13 @@
   .search-field button{flex:none;background:var(--ink);border:1px solid var(--ink);cursor:pointer;font-family:var(--sans);
     font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#fff;padding:12px 22px;border-radius:0;transition:background .2s,color .2s}
   .search-field button:hover{background:#fff;color:var(--ink)}
+  .q-wrap{position:relative;flex:1;display:flex;align-items:center}
+  .q-wrap input{padding-right:36px}      /* room for the clear (✕) button */
+  #clearBtn{position:absolute;right:0;top:50%;transform:translateY(-50%);display:none;
+    background:transparent;border:none;color:var(--ink-soft);font-family:var(--sans);font-weight:400;
+    font-size:22px;line-height:1;letter-spacing:0;text-transform:none;cursor:pointer;padding:4px 8px;border-radius:0}
+  #clearBtn:hover{background:transparent;color:var(--ink)}
+  #clearBtn.show{display:block}
   .suggest{margin-top:20px;font-family:var(--sans);font-size:14px;color:var(--body);line-height:2}
   .suggest .s-lbl{font-size:11.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--ink);margin-right:12px}
   .suggest a{font-size:14.5px;margin:0 5px;color:var(--link);border-bottom:1px solid var(--line)}
@@ -213,7 +220,7 @@
     .stage-inner{padding:34px 18px}
     .obj-frame{padding:26px 28px}
     .search-field{flex-wrap:wrap}            /* URL input + buttons stack instead of overflowing */
-    .search-field input{width:100%;flex:1 0 100%}
+    .search-field .q-wrap{width:100%;flex:1 0 100%}
     thead th,tbody td{padding-left:8px;padding-right:8px}
   }
 </style>
@@ -281,7 +288,10 @@
 
       <div class="search-wrap">
         <div class="search-field">
-          <input id="q" type="url" data-i18n-ph="qPh" placeholder="e.g. https://www.prada.com/us/en/women/bags/..." autocomplete="off">
+          <div class="q-wrap">
+            <input id="q" type="url" data-i18n-ph="qPh" placeholder="e.g. https://www.prada.com/us/en/women/bags/..." autocomplete="off">
+            <button id="clearBtn" type="button" aria-label="Clear URL" title="Clear">&times;</button>
+          </div>
           <button id="goBtn" data-i18n="goBtn">Compare Prices</button>
           <button id="refreshBtn" data-i18n="refreshBtn" title="Re-scrape, ignoring the cached result">Refresh</button>
         </div>
@@ -1008,6 +1018,10 @@ function renderResults(){
 $("#goBtn").onclick = () => doSearch(false);
 $("#refreshBtn").onclick = () => doSearch(true);
 $("#q").addEventListener("keydown", e => { if(e.key === "Enter") doSearch(false); });
+const toggleClear = () => $("#clearBtn").classList.toggle("show", $("#q").value.length > 0);
+$("#q").addEventListener("input", toggleClear);
+$("#clearBtn").onclick = () => { $("#q").value = ""; toggleClear(); $("#q").focus(); };
+toggleClear();
 $("#langToggle").onclick = () => setLang(lang === "ja" ? "en" : "ja");
 applyLang();
 </script>
