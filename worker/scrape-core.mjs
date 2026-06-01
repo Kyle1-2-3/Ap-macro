@@ -924,15 +924,7 @@ function inputCountryOf(inputUrl) {
 export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = null) {
   const code = extractCode(inputUrl);
   const targets = buildCountryUrls(inputUrl);  // may be {} when the URL has no locale segment
-  // Try the input market with the EXACT url the user pasted (query string and all) FIRST, so a
-  // selected ?variant= isn't lost — buildCountryUrls rebuilds locale paths from pathname only and
-  // drops the query, which on Shopify (e.g. Thom Browne) means the per-country page falls back to a
-  // wrong/loose price. The Shopify-variant layer in parseProductHtml needs that ?variant= to resolve.
   const inputCountry = inputCountryOf(inputUrl);
-  if (inputCountry) {
-    const existing = (targets[inputCountry] || []).filter((u) => u !== inputUrl);
-    targets[inputCountry] = [inputUrl, ...existing];
-  }
   let regionGate = null;
   // Ceiling on outbound fetches so we never trip Cloudflare's per-invocation subrequest limit
   // (≈50 on the free plan). When the budget runs out we stop trying candidates and return what
@@ -984,6 +976,15 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
         }
       }
     } catch { /* keep whatever candidates we have */ }
+  }
+
+  // Try the input market with the EXACT url the user pasted (query string and all) FIRST — even ahead
+  // of an hreflang/Demandware-discovered URL — so a selected ?variant= isn't lost. buildCountryUrls
+  // and hreflang both drop the query; on Shopify (e.g. Thom Browne) the per-country page then falls
+  // back to a wrong/loose price, and the Shopify-variant layer needs that ?variant= to resolve.
+  if (inputCountry && /[?&]variant=/.test(inputUrl)) {
+    const existing = (targets[inputCountry] || []).filter((u) => u !== inputUrl);
+    targets[inputCountry] = [inputUrl, ...existing];
   }
 
   // Only now decide there's nothing to try (neither a locale pattern nor hreflang yielded URLs).
