@@ -421,7 +421,13 @@ function str(v) { return typeof v === "string" ? v.trim() : ""; }
 function cleanImageUrl(v) {
   const s = str(v);
   if (!s) return "";
-  try { const u = new URL(s); return u.protocol === "https:" ? u.toString() : ""; } catch { return ""; }
+  try {
+    const u = new URL(s);
+    // Upgrade http→https: image CDNs serve https, and some brands write an http og:image (e.g. Thom
+    // Browne's Shopify CDN). Without this the https-only gate (and the /img proxy) would drop it.
+    if (u.protocol === "http:") u.protocol = "https:";
+    return u.protocol === "https:" ? u.toString() : "";
+  } catch { return ""; }
 }
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" } });
