@@ -933,10 +933,15 @@ function renderResults(){
   const spreadPct = (dearest.home - cheapest.home)/dearest.home*100;
   const originSold = availableRows.some(r=>r.country === it.origin);
   const originIsCheapest = originSold && availableRows.some(r => r.country === it.origin && r.home === minHome);
+  // Markets tied for the lowest price (e.g. EU single-market pricing makes France = Italy). The
+  // header lists ALL of them so one isn't misleadingly singled out; origin is ordered first.
+  const cheapestTier = availableRows.filter(r => r.home === minHome)
+    .sort((a,b) => (b.country===it.origin) - (a.country===it.origin));
+  const cheapestNames = cheapestTier.map(r => cname(r.country)).join(lang === "ja" ? "・" : " & ");
 
   let verdict = `<div class="verdict">
     <div class="v-top">
-      <h3>${t('cheapestLabel')} — <span class="cc">${esc(cname(cheapest.country))}</span></h3>
+      <h3>${t('cheapestLabel')} — <span class="cc">${esc(cheapestNames)}</span></h3>
       <span class="v-price">${fmt(cheapest.home, homeCur())}</span>
     </div>
     <p>${t('mostExpensive', esc(cname(dearest.country)), fmt(dearest.home, homeCur()), spreadPct.toFixed(0))}`;
