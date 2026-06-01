@@ -624,13 +624,15 @@ function isDemandwareControllerUrl(targetUrl) {
   }
 }
 
-async function directGetHtml(targetUrl, fetchImpl = fetch) {
+async function directGetHtml(targetUrl, fetchImpl = fetch, extraHeaders = null) {
   try {
+    const headers = {
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    };
+    if (extraHeaders && Object.keys(extraHeaders).length) Object.assign(headers, extraHeaders);
     const res = await fetchImpl(targetUrl, {
-      headers: {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
+      headers,
     });
     if (!res.ok) return { error: `Direct ${res.status}` };
     const html = await res.text();
@@ -647,12 +649,10 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   const wantCur = CURRENCY_OF[country];
   let got = null;
   let viaFetch = "firecrawl";
-  if (!extraHeaders) {
-    const direct = await directGetHtml(targetUrl, fetchImpl);
-    if (!direct.error) {
-      got = direct;
-      viaFetch = "direct";
-    }
+  const direct = await directGetHtml(targetUrl, fetchImpl, extraHeaders);
+  if (!direct.error) {
+    got = direct;
+    viaFetch = "direct";
   }
   got ||= await fcGetHtml(targetUrl, country, fcKey, fetchImpl, extraHeaders);
   if (got.error) return { ok:false, country, reason:got.error, url:targetUrl };

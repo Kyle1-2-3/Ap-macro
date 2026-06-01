@@ -122,7 +122,7 @@ test("applyDemandwareTargets is a no-op when dw is null", () => {
   assert.deepEqual(out, targets);
 });
 
-test("Global-e region negotiation feeds Firecrawl with a market cookie", async () => {
+test("Global-e region negotiation feeds direct fetch with a market cookie", async () => {
   const geHtml = `
     <link rel="preconnect" href="https://web.global-e.com">
     <link rel="preconnect" href="https://gepi.global-e.com">
@@ -162,16 +162,13 @@ test("Global-e region negotiation feeds Firecrawl with a market cookie", async (
         },
       };
     }
-    if (String(url).includes("api.firecrawl.dev/v2/scrape")) {
-      const body = JSON.parse(init.body);
-      assert.equal(body.url, targetUrl);
-      assert.equal(body.headers.Cookie, 'GlobalE_Data={"countryISO":"CA","currencyCode":"CAD","cultureCode":"en-GB"}');
+    if (String(url) === targetUrl) {
+      assert.equal(init.headers.Cookie, 'GlobalE_Data={"countryISO":"CA","currencyCode":"CAD","cultureCode":"en-GB"}');
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          data: { html: '<html><body><div data-product-sku="6930e1c84cce7"><span class="value" content="250.00">CA$250</span></div></body></html>' },
-        }),
+        text: async () => '<html><body><div data-product-sku="6930e1c84cce7"><span class="value" content="250.00">CA$250</span></div></body></html>',
+        headers: { get: () => null },
       };
     }
     throw new Error(`Unexpected fetch: ${url}`);
@@ -187,10 +184,10 @@ test("Global-e region negotiation feeds Firecrawl with a market cookie", async (
   assert.equal(out.ok, true);
   assert.equal(out.price, 250);
   assert.equal(out.currency, "CAD");
-  assert.equal(out.via, "text");
+  assert.equal(out.via, "direct");
   assert.ok(calls.some((c) => c.url.includes("/includes/js/806")));
   assert.ok(calls.some((c) => c.url.includes("/Localize/SetLocalize/SID123")));
-  assert.ok(calls.some((c) => c.url.includes("api.firecrawl.dev/v2/scrape")));
+  assert.ok(calls.some((c) => c.url === targetUrl));
 });
 
 test("Global-e region negotiation reports unresolved browser-state storefronts explicitly", async () => {
@@ -230,13 +227,12 @@ test("Global-e region negotiation reports unresolved browser-state storefronts e
         },
       };
     }
-    if (String(url).includes("api.firecrawl.dev/v2/scrape")) {
+    if (String(url) === targetUrl) {
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          data: { html: '<html><body><div data-product-sku="6930e1c84cce7"><span class="value" content="450.00">450 EUR</span></div></body></html>' },
-        }),
+        text: async () => '<html><body><div data-product-sku="6930e1c84cce7"><span class="value" content="450.00">450 EUR</span></div></body></html>',
+        headers: { get: () => null },
       };
     }
     throw new Error(`Unexpected fetch: ${url}`);
