@@ -765,8 +765,11 @@ export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchIm
       last = r;
     }
   }
-  // Vision fallback — only when text failed, a vision reader is available, and budget remains.
-  if (visionFn && !(budget && budget.used >= budget.max)) {
+  // Vision fallback — only when text failed, a reader exists, and the budget has room. Vision costs
+  // ~3 subrequests (screenshot + image fetch + Gemini), so reserve and count them — otherwise they
+  // silently blow Cloudflare's per-invocation cap even though text fetches were budgeted.
+  if (visionFn && (!budget || budget.used + 3 <= budget.max)) {
+    if (budget) budget.used += 3;
     const wantCur = CURRENCY_OF[country];
     try {
       const v = await visionFn(candidateUrls[0], country, wantCur);
