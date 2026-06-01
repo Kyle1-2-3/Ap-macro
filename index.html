@@ -143,7 +143,6 @@
   .lk-btn.sub:hover{background:var(--ink-soft);color:#fff;border-color:var(--ink-soft)}
   .quip{margin-top:24px;font-family:var(--body-serif);font-size:15.5px;font-style:italic;color:var(--ink-soft);max-width:560px;margin-left:auto;margin-right:auto;line-height:1.6}
   .loading{padding:64px 20px;text-align:center;font-family:var(--serif);font-style:italic;font-size:22px;color:var(--ink-soft)}
-  .loading .dots::after{content:"";animation:dots 1.2s steps(4,end) infinite}
   .dots::after{content:"";animation:dots 1.2s steps(4,end) infinite}
   @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}100%{content:""}}
 
@@ -246,7 +245,7 @@
   <div class="wrap" style="padding-top:42px">
     <div class="disclaimer">
       <span class="lbl" data-i18n="discLbl">Live</span>
-      <span data-i18n="discText">Prices are looked up in real time using <strong>Google Gemini 2.5 Flash with Google Search grounding</strong>. Accuracy depends on what's currently published online — treat each result as a directional snapshot, not a quote. Exchange rates are static (≈ May 2026).</span>
+      <span data-i18n="discText">Prices are read live from each brand's <strong>official country websites</strong>, then verified — product code, local currency, and a cross-market sanity check — so a market shows as <strong>unavailable</strong> rather than a guess when its price can't be confirmed. Amounts appear in your selected currency at live exchange rates. Brand context and the macro note are written by Google Gemini. Treat each result as a directional snapshot, not a quote.</span>
     </div>
   </div>
 
@@ -375,23 +374,17 @@
 <footer>
   <div class="wrap">
     <span class="mark">SHOULD YOU BUY IT HERE<span class="dot">.</span></span>
-    <span data-i18n="footerText">AP Macroeconomics · Independent Project 2026 · Built by directing an AI tool (see the project's Prompt Log). Prices are illustrative placeholders pending the builder's research.</span>
+    <span data-i18n="footerText">AP Macroeconomics · Independent Project 2026 · Built by directing an AI tool (see the project's Prompt Log). Prices are read live from official brand websites and verified; markets that can't be confirmed are shown as unavailable, never estimated.</span>
   </div>
 </footer>
 
 <script>
 /* =====================================================================
-   EDIT YOUR DATA HERE
+   STATIC FALLBACK EXCHANGE RATES (≈ May 2026)
    ---------------------------------------------------------------------
-   RATES = value of 1 unit of that currency in US dollars (≈ May 2026).
+   RATES = value of 1 unit of that currency in US dollars.
      e.g. EUR:1.087 -> EUR 1 = $1.087 ; JPY:0.006667 -> JPY 1 = $0.0067 ($1 = JPY 150).
-   ITEMS: prices are in EACH COUNTRY'S OWN currency. Estimates — replace with researched numbers.
-     img      = URL or data-URI for a product photo. Falls back to a text frame if missing.
-     logoBox  = OPTIONAL {x,y,w,h} as % of the image (from the top-left): blurs ONLY that rectangle (the logo),
-                leaving the rest of the product visible. Omit it and the photo gets a light overall blur instead.
-                Eyeball the four numbers, then nudge them until the box sits over the logo.
-     aliases  = lower-case search terms that should match this item.
-   To ADD an item, copy a block, change the values, give it a unique id.
+   Used only for the client-side toHome() fallback; live prices come from the Worker.
    ===================================================================== */
 const RATES = { USD:1, EUR:1.087, GBP:1.265, CHF:1.135, JPY:0.006667, KRW:0.00074, CAD:0.732 };
 
@@ -411,7 +404,6 @@ const COUNTRIES = {
   "South Korea":{cc:"KR", tax:"10% VAT; visitors get instant or airport refunds, and the duty-free scene is large."}
 };
 
-const ITEMS = [];
 
 const WORKER_URL = "https://ap-macro-lookup.bridge11korea.workers.dev";
 
@@ -445,7 +437,7 @@ const STR = {
   heroH1:{en:`The Same Object,<br>a <span class="it">Different</span> Price<br>at Every Border`, ja:`同じ商品なのに、<br>国境ごとに<br><span class="it">変わる</span>値段。`},
   heroLede:{en:`Name a branded product. Decide whether you'd still want it with the logo hidden — then see which country in the world sells it for the least, in your own currency, and why the price moves when you cross a frontier.`, ja:`ブランド品の名前を入力してください。ロゴを隠してもまだ欲しいかを考えたうえで、世界のどの国がいちばん安く売っているかを、あなたの通貨で確かめましょう。そして、国境を越えると値段が動く理由も見てみましょう。`},
   discLbl:{en:"Live", ja:"ライブ"},
-  discText:{en:`Prices are looked up in real time using <strong>Google Gemini 2.5 Flash with Google Search grounding</strong> and shown in your selected currency at current exchange rates. Accuracy depends on what's currently published online — treat each result as a directional snapshot, not a quote.`, ja:`価格は <strong>Google Gemini 2.5 Flash（Google 検索グラウンディング付き）</strong> を使ってリアルタイムに調べ、選択した通貨に現在の為替レートで換算して表示しています。精度はネット上で現在公開されている情報に左右されるため、各結果は正確な見積もりではなく、おおよその目安として捉えてください。`},
+  discText:{en:`Prices are read live from each brand's <strong>official country websites</strong>, then verified — product code, local currency, and a cross-market sanity check — so a market shows as <strong>unavailable</strong> rather than a guess when its price can't be confirmed. Amounts appear in your selected currency at live exchange rates. Brand context and the macro note are written by Google Gemini. Treat each result as a directional snapshot, not a quote.`, ja:`価格は各ブランドの<strong>公式の国別サイト</strong>からリアルタイムに取得し、商品コード・現地通貨・市場間の妥当性チェックで検証しています。確認できない市場は推測せず<strong>「掲載なし」</strong>として表示します。金額は選択した通貨に現在の為替レートで換算して表示します。ブランドの説明とマクロのひと言は Google Gemini が生成します。各結果は正確な見積もりではなく、おおよその目安として捉えてください。`},
   locOverline:{en:"01 — Locale", ja:"01 — 地域"},
   locH2:{en:"Where are you shopping from?", ja:"どこで買い物しますか？"},
   locP:{en:"This sets the currency every price below is shown in — the money you actually carry.", ja:"下に表示されるすべての価格は、ここで選んだ国の通貨——あなたが実際に使うお金——で表示されます。"},
@@ -484,7 +476,7 @@ const STR = {
   step4:{en:`See it de-branded — "would you still buy it?"`, ja:`ロゴを消した姿を見る——「それでも買う？」`},
   step5:{en:"Reveal the country-by-country price ranking, chart and table", ja:"国ごとの価格ランキング・グラフ・表を表示する"},
   step6:{en:"Read the macroeconomic reasons behind the spread", ja:"価格差の裏にあるマクロ経済の理由を読む"},
-  footerText:{en:"AP Macroeconomics · Independent Project 2026 · Built by directing an AI tool (see the project's Prompt Log). Prices are illustrative placeholders pending the builder's research.", ja:"AP マクロ経済学 · 自主プロジェクト 2026 · AI ツールを指示して制作（プロジェクトの Prompt Log を参照）。価格は制作者のリサーチが完了するまでの仮の参考値です。"}
+  footerText:{en:"AP Macroeconomics · Independent Project 2026 · Built by directing an AI tool (see the project's Prompt Log). Prices are read live from official brand websites and verified; markets that can't be confirmed are shown as unavailable, never estimated.", ja:"AP マクロ経済学 · 自主プロジェクト 2026 · AI ツールを指示して制作（プロジェクトの Prompt Log を参照）。価格は公式ブランドサイトからリアルタイムに取得・検証しており、確認できない市場は推測せず「掲載なし」と表示します。"}
 };
 
 // Dynamic strings used inside JS render functions. Values may be functions.
@@ -493,17 +485,11 @@ const T = {
     rateLive:(c)=>`Prices are looked up live and shown in ${c} — no fixed exchange rate.`,
     updatingPrices:"Updating prices in your currency",
     errInvalidUrl:"Please enter a valid HTTPS URL from a brand website.",
-    errNotOfficial:(domain)=>`"${domain}" is not a recognized official brand website.`,
     errBlocked:(domain)=>`Third-party retailers like "${domain}" are not supported.`,
     loadScraping:["Reading the official product page","Finding country-specific pages","Verifying code and currency","Comparing 8 markets"],
     unavailable:(brand,country)=>`Not available on ${brand} ${country}`,
     unavailableMarket:(country)=>`Price not published in ${country}`,
-    errImageFile:"Please upload an image file.",
-    errImageLarge:"Image too large (max 10 MB).",
-    errPrefix:(m)=>`Error: ${m}`,
-    errCouldNotProcess:"Could not process image.",
     errNetworkAI:"Network error — could not reach the AI service. Please try again.",
-    loadingDebrand:"AI is locating the logo region",
     capOriginal:"— original —",
     capLogoRemoved:"— logo removed —",
     capAIremoved:"— AI removed the logo —",
@@ -511,15 +497,6 @@ const T = {
     capLogoBlurred:"— logo blurred —",
     aiRemoving:"AI is removing the logo…",
     objWithoutLabel:"the object, without the label",
-    askWithoutLogo:"Without the logo — would you still want this?",
-    btnYesObject:"Yes — the object speaks for itself",
-    btnNoName:"No — the name is the point",
-    quipDebYes:`Fair — for many buyers the name <em>is</em> the product: status, signalling, resale value. The brand premium is what you pay above the cost of the <em>object itself</em>.`,
-    quipDebNo:`That gap — between what you'd pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they're expensive are called <em>Veblen goods</em>.`,
-    errTypeName:"Type the product name first.",
-    errUploadFirst:"Upload an image first.",
-    loadImg:["Reading the official product page","Blurring the logo region","Comparing 8 markets","Verifying the result"],
-    loadNoImg:["Reading the official product page","Identifying the product","Comparing 8 markets","Verifying the result"],
     notFound:(q,detail)=>`Couldn't pull pricing data for "<strong>${q}</strong>"${detail}. This usually means the name was too vague — try a more specific version like "Rolex Submariner Date 41mm" instead of just "Rolex", or try one of the suggested products above.`,
     stickerPrice:"its sticker price",
     originLine:(cat,origin)=>`a ${cat} from a house based in ${origin}`,
@@ -544,23 +521,16 @@ const T = {
     tagHome:"home of the brand", tagCheapest:"cheapest", tagYou:"your locale", youTag:"you",
     macroLabel:"📈 The macro",
     genka:"Reality check.",
-    sources:"Gemini used these sources:"
   },
   ja:{
     rateLive:(c)=>`価格は ${c} でリアルタイムに取得しています（固定の為替レートは使用していません）。`,
     updatingPrices:"選択した通貨で価格を更新中",
     errInvalidUrl:"ブランドサイトの有効なHTTPS URLを入力してください。",
-    errNotOfficial:(domain)=>`「${domain}」は公式ブランドサイトとして認識されていません。`,
     errBlocked:(domain)=>`「${domain}」などのセレクトショップには対応していません。`,
     loadScraping:["商品ページをスクレイピング中","8つの市場で価格を比較中","為替レートを確認中","もうすぐです"],
     unavailable:(brand,country)=>`${brand} ${country}では取り扱いなし`,
     unavailableMarket:(country)=>`${country}では価格未掲載`,
-    errImageFile:"画像ファイルをアップロードしてください。",
-    errImageLarge:"画像が大きすぎます（最大10MB）。",
-    errPrefix:(m)=>`エラー：${m}`,
-    errCouldNotProcess:"画像を処理できませんでした。",
     errNetworkAI:"通信エラー——AI サービスに接続できませんでした。もう一度お試しください。",
-    loadingDebrand:"AI がブランドロゴを消しています",
     capOriginal:"— オリジナル —",
     capLogoRemoved:"— ロゴを削除 —",
     capAIremoved:"— AI がロゴを削除 —",
@@ -568,15 +538,6 @@ const T = {
     capLogoBlurred:"— ロゴをぼかしています —",
     aiRemoving:"AI がロゴを消しています…",
     objWithoutLabel:"ラベルのない、モノそのもの",
-    askWithoutLogo:"ロゴがなくても——それでも欲しいですか？",
-    btnYesObject:"はい——モノ自体に価値がある",
-    btnNoName:"いいえ——名前こそが重要",
-    quipDebYes:`なるほど——多くの買い手にとって、名前こそが<em>商品そのもの</em>です。ステータス、シグナリング、リセールバリュー。ブランドプレミアムとは、<em>モノ自体</em>の原価を超えて支払う分のことです。`,
-    quipDebNo:`あなたが<em>モノ</em>に払ってもよい額と、ブランドが請求する額との差——それがブランドプレミアムです。高いから<em>こそ</em>買われる商品は<em>ヴェブレン財</em>と呼ばれます。`,
-    errTypeName:"先に商品名を入力してください。",
-    errUploadFirst:"先に画像をアップロードしてください。",
-    loadImg:["8つの市場で価格を検索中","AI がロゴを消しています","為替レートを比較中","もうすぐです"],
-    loadNoImg:["8つの市場で価格を検索中","これが何かを Gemini に確認中","為替レートを比較中","もうすぐです"],
     notFound:(q,detail)=>`「<strong>${q}</strong>」の価格データを取得できませんでした${detail}。名前があいまいすぎる場合によく起こります——「Rolex」だけでなく「Rolex Submariner Date 41mm」のように、より具体的に入力するか、上の候補からお試しください。`,
     stickerPrice:"その定価",
     originLine:(cat,origin)=>`${origin}に拠点を置くブランドの${cat}`,
@@ -601,7 +562,6 @@ const T = {
     tagHome:"ブランドの母国", tagCheapest:"最安", tagYou:"あなたの地域", youTag:"あなた",
     macroLabel:"📈 マクロの視点",
     genka:"現実を見ると。",
-    sources:"Gemini が参照したソース："
   }
 };
 
@@ -676,7 +636,6 @@ async function refetchForCurrency(){
       if(data.local_prices) current.prices = data.local_prices;
       if(data.prices) current.priceData = data.prices;
       current.homePrices = data.home_prices || null;
-      current.homeCurrencyFetched = data.home_currency || homeCur();
     }
   }catch(e){ /* keep existing data; render falls back to static conversion */ }
   renderStage();
@@ -717,17 +676,14 @@ function loadImage(url){
 
 function drawImageOnWhite(canvas, img, w, h){
   const ctx = canvas.getContext("2d");
-  ctx.save();
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, w, h);
-  ctx.restore();
   ctx.drawImage(img, 0, 0, w, h);
 }
 
 async function debrandFromUrl(imageUrl){
   try {
-    const proxied = imageUrl;
-    const img = await loadImage(proxied);
+    const img = await loadImage(imageUrl);
     const MAX = 1024;
     let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
     if(w > MAX || h > MAX){
@@ -804,7 +760,6 @@ async function doSearch(force){
 
     const imageUrl = data.product.image_url || "";
     current = {
-      id: "live-" + Date.now(),
       name: data.product.name,
       brand: data.product.brand,
       category: data.product.category,
@@ -817,23 +772,18 @@ async function doSearch(force){
       priceData: data.prices,                    // full prices object (with available/unavailable)
       prices: data.local_prices || {},            // local currency prices (for legacy toHome)
       homePrices: data.home_prices || null,
-      homeCurrencyFetched: data.home_currency || homeCur(),
-      sources: []
     };
 
     renderStage();
 
     if(imageUrl){
+      const item = current;   // pin the item so a slower debrand can't clobber a newer search
       debrandFromUrl(imageUrl).then(result => {
-        if(current && result){
-          current.debrandedImg = result;
-          current.debrandPending = false;
-          renderStage();
-          if(revealed) renderResults();
-        } else if(current){
-          current.debrandPending = false;
-          renderStage();
-        }
+        if(current !== item) return;   // a newer search replaced this product — drop the stale result
+        current.debrandedImg = result || null;
+        current.debrandPending = false;
+        renderStage();
+        if(revealed) renderResults();
       });
     }
   } catch(e) {
@@ -1020,9 +970,8 @@ function renderResults(){
 
   const genka = it.blurb ? `<div class="genka"><strong>${t('genka')}</strong> ${esc(it.blurb)}</div>` : "";
 
-  const sourcesHtml = (it.sources && it.sources.length) ? `<div style="margin-top:24px;font-size:12px;color:var(--ink-soft);line-height:1.8">${t('sources')} ${it.sources.slice(0,4).map(u=>{try{return `<a href="${esc(u)}" target="_blank" rel="noopener" style="font-size:12px;margin-right:10px">${esc(new URL(u).hostname)}</a>`;}catch(e){return "";}}).filter(Boolean).join("")}</div>` : "";
 
-  $("#results").innerHTML = verdict + macroCallout + chart + table + genka + sourcesHtml;
+  $("#results").innerHTML = verdict + macroCallout + chart + table + genka;
 }
 
 /* ---- init ---- */
