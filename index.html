@@ -496,6 +496,7 @@ const T = {
     errBlocked:(domain)=>`Third-party retailers like "${domain}" are not supported.`,
     loadScraping:["Scraping the product page","Comparing prices across 8 markets","Checking exchange rates","Almost there"],
     unavailable:(brand,country)=>`Not available on ${brand} ${country}`,
+    unavailableMarket:(country)=>`Price not published in ${country}`,
     errImageFile:"Please upload an image file.",
     errImageLarge:"Image too large (max 10 MB).",
     loadingDebrand:"AI is removing brand logos",
@@ -552,6 +553,7 @@ const T = {
     errBlocked:(domain)=>`「${domain}」などのセレクトショップには対応していません。`,
     loadScraping:["商品ページをスクレイピング中","8つの市場で価格を比較中","為替レートを確認中","もうすぐです"],
     unavailable:(brand,country)=>`${brand} ${country}では取り扱いなし`,
+    unavailableMarket:(country)=>`${country}では価格未掲載`,
     errImageFile:"画像ファイルをアップロードしてください。",
     errImageLarge:"画像が大きすぎます（最大10MB）。",
     loadingDebrand:"AI がブランドロゴを消しています",
@@ -890,6 +892,13 @@ function renderResults(){
   const it = current;
   const pd = it.priceData || {};   // full price data with available/unavailable info
   const lp = it.prices || {};      // local_prices (numbers)
+  const unavailableLabel = (country, reason) => {
+    if (!reason) return t('unavailable', it.brand || '', cname(country));
+    if (/No price found|Price out of range|Currency .*≠/.test(reason)) {
+      return t('unavailableMarket', cname(country));
+    }
+    return reason;
+  };
 
   // Build available and unavailable rows
   const availableRows = [];
@@ -903,7 +912,7 @@ function renderResults(){
     // Check priceData for availability info
     const entry = pd[country];
     if(entry && entry.available === false){
-      unavailableRows.push({ country, cc, isHome, reason: entry.reason || t('unavailable', it.brand || '', cname(country)) });
+      unavailableRows.push({ country, cc, isHome, reason: unavailableLabel(country, entry.reason) });
       continue;
     }
 
@@ -911,7 +920,7 @@ function renderResults(){
     const local = (typeof lp[country] === "number") ? lp[country] : (entry && typeof entry.price === "number" ? entry.price : null);
     if(local === null || !isFinite(local) || local <= 0){
       // If no price data at all, skip (don't show as unavailable unless explicitly marked)
-      if(entry && entry.available === false) unavailableRows.push({ country, cc, isHome, reason: entry.reason || '' });
+      if(entry && entry.available === false) unavailableRows.push({ country, cc, isHome, reason: unavailableLabel(country, entry.reason) });
       continue;
     }
 
