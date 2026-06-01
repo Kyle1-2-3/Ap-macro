@@ -212,6 +212,9 @@
     .bar-row{grid-template-columns:108px 1fr 90px;gap:10px}
     .stage-inner{padding:34px 18px}
     .obj-frame{padding:26px 28px}
+    .search-field{flex-wrap:wrap}            /* URL input + buttons stack instead of overflowing */
+    .search-field input{width:100%;flex:1 0 100%}
+    thead th,tbody td{padding-left:8px;padding-right:8px}
   }
 </style>
 </head>
@@ -472,7 +475,7 @@ const STR = {
   howH2:{en:"The journey, in six steps", ja:"6ステップの流れ"},
   step1:{en:"Open the site", ja:"サイトを開く"},
   step2:{en:`Set your "shopping from" country<span class="f-sub">— so prices appear in your currency</span>`, ja:`「買い物する国」を設定する<span class="f-sub">——価格があなたの通貨で表示されます</span>`},
-  step3:{en:"Search a product by name", ja:"商品名で検索する"},
+  step3:{en:"Paste an official product URL", ja:"公式の商品URLを貼り付ける"},
   step4:{en:`See it de-branded — "would you still buy it?"`, ja:`ロゴを消した姿を見る——「それでも買う？」`},
   step5:{en:"Reveal the country-by-country price ranking, chart and table", ja:"国ごとの価格ランキング・グラフ・表を表示する"},
   step6:{en:"Read the macroeconomic reasons behind the spread", ja:"価格差の裏にあるマクロ経済の理由を読む"},
@@ -600,6 +603,8 @@ let homeCountry = "United States";
 let current = null;     // selected item
 let revealed = false;
 let lastQuery = "";     // last product looked up (so a currency switch can re-run it)
+let searchSeq = 0;      // bumped per search; a response that isn't the latest is dropped
+let lastRevealAnswer = null;  // "yes"/"no" — kept so a language switch can re-render the reveal quip
 const homeCur = () => CURRENCY_OF[homeCountry];
 
 function fmt(amount, cur){
@@ -634,7 +639,7 @@ async function refetchForCurrency(){
     const data = await res.json();
     if(data && data.found){
       if(data.local_prices) current.prices = data.local_prices;
-      if(data.prices) current.priceData = data.prices;
+      current.priceData = mergePriceData(data);
       current.homePrices = data.home_prices || null;
     }
   }catch(e){ /* keep existing data; render falls back to static conversion */ }
@@ -717,6 +722,15 @@ async function debrandFromUrl(imageUrl){
 }
 
 /* ---- main search flow ---- */
+// The worker returns confirmed markets in data.prices and unconfirmed ones in data.failed.
+// Merge them so renderResults shows every country — failed ones as honest "unavailable" rows
+// (matches the disclaimer/footer promise), instead of silently dropping them.
+function mergePriceData(data){
+  const pd = { ...(data.prices || {}) };
+  for(const f of (data.failed || [])) pd[f.country] = { available:false, reason:f.reason };
+  return pd;
+}
+
 async function doSearch(force){
   const url = $("#q").value.trim();
   if(!url){ $("#searchMsg").textContent = t('errInvalidUrl'); return; }
@@ -725,6 +739,7 @@ async function doSearch(force){
   if(!v.valid){ $("#searchMsg").textContent = v.msg; return; }
 
   lastQuery = url;
+  const mySeq = ++searchSeq;   // any earlier in-flight search whose response lands after this is stale
   $("#searchMsg").innerHTML = "";
   $("#debrandSection").classList.remove("hidden");
   $("#resultsSection").classList.add("hidden");
@@ -741,6 +756,7 @@ async function doSearch(force){
 
   $("#debrandSection").scrollIntoView({behavior:"smooth",block:"start"});
   revealed = false;
+  lastRevealAnswer = null;
 
   try {
     const res = await fetch(`${WORKER_URL}/scrape`, {
@@ -750,6 +766,7 @@ async function doSearch(force){
     });
     const data = await res.json();
     clearInterval(loadTimer);
+    if(mySeq !== searchSeq) return;   // a newer search superseded this one — drop the stale response
 
     if(!data.found){
       const detail = data.error ? ` (${esc(data.error)})` : "";
@@ -769,7 +786,7 @@ async function doSearch(force){
       debrandPending: !!imageUrl,
       blurb: data.product.blurb || "",
       macro_insight: data.macro_insight || "",
-      priceData: data.prices,                    // full prices object (with available/unavailable)
+      priceData: mergePriceData(data),            // confirmed + unconfirmed markets (failed → unavailable)
       prices: data.local_prices || {},            // local currency prices (for legacy toHome)
       homePrices: data.home_prices || null,
     };
@@ -788,6 +805,7 @@ async function doSearch(force){
     }
   } catch(e) {
     clearInterval(loadTimer);
+    if(mySeq !== searchSeq) return;   // stale failure — a newer search is already running
     $("#searchMsg").innerHTML = t('errNetworkAI');
     $("#debrandSection").classList.add("hidden");
   }
@@ -840,15 +858,16 @@ function renderStage(){
         <div class="choice-row"><button class="lk-btn" id="anywayBtn">${t('btnShowAnyway')}</button></div>`;
       $("#anywayBtn").onclick = () => reveal("no");
     };
+  } else if(lastRevealAnswer){
+    // re-paint the reveal quip so switching language after revealing doesn't blank it
+    $("#quip2").innerHTML = `<div class="quip">${t(lastRevealAnswer === "yes" ? 'revealYes' : 'revealNo')}</div>`;
   }
 }
 
 function reveal(answer){
   revealed = true;
-  renderStage();
-  $("#quip2").innerHTML = answer === "yes"
-    ? `<div class="quip">${t('revealYes')}</div>`
-    : `<div class="quip">${t('revealNo')}</div>`;
+  lastRevealAnswer = answer;
+  renderStage();              // renderStage re-paints #quip2 from lastRevealAnswer (survives lang switch)
   renderResults();
   $("#resultsSection").classList.remove("hidden");
   $("#resultsSection").scrollIntoView({behavior:"smooth",block:"start"});
@@ -903,13 +922,17 @@ function renderResults(){
   }
 
   const max = Math.max(...availableRows.map(r=>r.home));
-  const cheapest = availableRows[0], dearest = availableRows[availableRows.length-1];
+  const minHome = availableRows[0].home;                 // cheapest price (rows sorted ascending)
+  // When several markets tie for cheapest, treat the brand's home country as the representative
+  // cheapest if it's in that tier — otherwise sort order can hide a genuine origin-advantage result.
+  const cheapest = availableRows.find(r => r.home === minHome && r.country === it.origin) || availableRows[0];
+  const dearest = availableRows[availableRows.length-1];
   const youRow = availableRows.find(r=>r.isHome);
   const youRank = youRow ? availableRows.indexOf(youRow)+1 : null;
   const savePctVsYou = youRow ? ((youRow.home - cheapest.home)/youRow.home*100) : null;
   const spreadPct = (dearest.home - cheapest.home)/dearest.home*100;
-  const originIsCheapest = cheapest.country === it.origin;
   const originSold = availableRows.some(r=>r.country === it.origin);
+  const originIsCheapest = originSold && availableRows.some(r => r.country === it.origin && r.home === minHome);
 
   let verdict = `<div class="verdict">
     <div class="v-top">
@@ -930,7 +953,7 @@ function renderResults(){
   // Bar chart: only available rows
   const chart = `<div class="chart">${availableRows.map(r=>{
     const pct = Math.max(4, r.home/max*100);
-    const cls = (r===cheapest?"cheapest":"") + (r.isHome?" home":"");
+    const cls = (r.home===minHome?"cheapest":"") + (r.isHome?" home":"");
     return `<div class="bar-row">
       <div class="cy"><span class="cc">${r.cc}</span><span class="nm">${esc(cname(r.country))}</span>${r.isHome?`<span class="you-tag">${t('youTag')}</span>`:''}</div>
       <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
@@ -943,7 +966,7 @@ function renderResults(){
       <td>${i+1}</td>
       <td class="country"><span class="cc">${r.cc}</span>${esc(cname(r.country))}
         ${r.country===it.origin?`<span class="note-tag">${t('tagHome')}</span>`:''}
-        ${r===cheapest?`<span class="note-tag">${t('tagCheapest')}</span>`:''}
+        ${r.home===minHome?`<span class="note-tag">${t('tagCheapest')}</span>`:''}
         ${r.isHome?`<span class="note-tag">${t('tagYou')}</span>`:''}</td>
       <td>${fmt(r.local, r.localCur)}</td>
       <td class="num">${fmt(r.home, homeCur())}</td>
