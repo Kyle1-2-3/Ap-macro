@@ -886,7 +886,7 @@ function renderResults(){
   const lp = it.prices || {};      // local_prices (numbers)
   const unavailableLabel = (country, reason) => {
     if (!reason) return t('unavailable', it.brand || '', cname(country));
-    if (/No price found|Price out of range|Currency .*≠/.test(reason)) {
+    if (/No price found|Price out of range|Currency .*≠|budget|No per-country page|No candidate|not localized|Product code not on page/.test(reason)) {
       return t('unavailableMarket', cname(country));
     }
     return reason;
