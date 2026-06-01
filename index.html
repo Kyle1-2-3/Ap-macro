@@ -502,8 +502,13 @@ const T = {
     errPrefix:(m)=>`Error: ${m}`,
     errCouldNotProcess:"Could not process image.",
     errNetworkAI:"Network error — could not reach the AI service. Please try again.",
+    loadingDebrand:"AI is locating the logo region",
     capOriginal:"— original —",
     capLogoRemoved:"— logo removed —",
+    capAIremoved:"— AI removed the logo —",
+    capLogoByAI:"— logo removed by AI —",
+    capLogoBlurred:"— logo blurred —",
+    aiRemoving:"AI is removing the logo…",
     objWithoutLabel:"the object, without the label",
     askWithoutLogo:"Without the logo — would you still want this?",
     btnYesObject:"Yes — the object speaks for itself",
@@ -512,6 +517,8 @@ const T = {
     quipDebNo:`That gap — between what you'd pay for the <em>object</em> and what the house charges — is the brand premium. Goods bought <em>because</em> they're expensive are called <em>Veblen goods</em>.`,
     errTypeName:"Type the product name first.",
     errUploadFirst:"Upload an image first.",
+    loadImg:["Reading the official product page","Blurring the logo region","Comparing 8 markets","Verifying the result"],
+    loadNoImg:["Reading the official product page","Identifying the product","Comparing 8 markets","Verifying the result"],
     notFound:(q,detail)=>`Couldn't pull pricing data for "<strong>${q}</strong>"${detail}. This usually means the name was too vague — try a more specific version like "Rolex Submariner Date 41mm" instead of just "Rolex", or try one of the suggested products above.`,
     stickerPrice:"its sticker price",
     originLine:(cat,origin)=>`a ${cat} from a house based in ${origin}`,
@@ -552,8 +559,13 @@ const T = {
     errPrefix:(m)=>`エラー：${m}`,
     errCouldNotProcess:"画像を処理できませんでした。",
     errNetworkAI:"通信エラー——AI サービスに接続できませんでした。もう一度お試しください。",
+    loadingDebrand:"AI がブランドロゴを消しています",
     capOriginal:"— オリジナル —",
     capLogoRemoved:"— ロゴを削除 —",
+    capAIremoved:"— AI がロゴを削除 —",
+    capLogoByAI:"— AI がロゴを削除しました —",
+    capLogoBlurred:"— ロゴをぼかしています —",
+    aiRemoving:"AI がロゴを消しています…",
     objWithoutLabel:"ラベルのない、モノそのもの",
     askWithoutLogo:"ロゴがなくても——それでも欲しいですか？",
     btnYesObject:"はい——モノ自体に価値がある",
@@ -562,6 +574,8 @@ const T = {
     quipDebNo:`あなたが<em>モノ</em>に払ってもよい額と、ブランドが請求する額との差——それがブランドプレミアムです。高いから<em>こそ</em>買われる商品は<em>ヴェブレン財</em>と呼ばれます。`,
     errTypeName:"先に商品名を入力してください。",
     errUploadFirst:"先に画像をアップロードしてください。",
+    loadImg:["8つの市場で価格を検索中","AI がロゴを消しています","為替レートを比較中","もうすぐです"],
+    loadNoImg:["8つの市場で価格を検索中","これが何かを Gemini に確認中","為替レートを比較中","もうすぐです"],
     notFound:(q,detail)=>`「<strong>${q}</strong>」の価格データを取得できませんでした${detail}。名前があいまいすぎる場合によく起こります——「Rolex」だけでなく「Rolex Submariner Date 41mm」のように、より具体的に入力するか、上の候補からお試しください。`,
     stickerPrice:"その定価",
     originLine:(cat,origin)=>`${origin}に拠点を置くブランドの${cat}`,
@@ -709,6 +723,42 @@ function drawImageOnWhite(canvas, img, w, h){
   ctx.drawImage(img, 0, 0, w, h);
 }
 
+async function debrandFromUrl(imageUrl){
+  try {
+    const proxied = imageUrl;
+    const img = await loadImage(proxied);
+    const MAX = 1024;
+    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if(w > MAX || h > MAX){
+      if(w > h){ h = Math.round(h * MAX / w); w = MAX; }
+      else { w = Math.round(w * MAX / h); h = MAX; }
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    drawImageOnWhite(canvas, img, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    const base64 = dataUrl.split(",")[1];
+    const res = await fetch(`${WORKER_URL}/debrand`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: base64, mimeType: "image/jpeg" })
+    });
+    const d = await res.json();
+    if(!d.success || !d.image) return null;
+    const out = `data:${d.mimeType || "image/png"};base64,${d.image}`;
+    try {
+      await loadImage(out);
+      return out;
+    } catch(e) {
+      console.warn("debrand returned invalid image:", e);
+      return null;
+    }
+  } catch(e) {
+    console.warn("debrand failed:", e);
+    return null;
+  }
+}
+
 /* ---- main search flow ---- */
 async function doSearch(force){
   const url = $("#q").value.trim();
@@ -759,6 +809,8 @@ async function doSearch(force){
       category: data.product.category,
       origin: data.product.origin,
       img: imageUrl,   // worker already returns a proxied /img URL — do NOT wrap again (double-proxy 404s)
+      debrandedImg: null,
+      debrandPending: !!imageUrl,
       blurb: data.product.blurb || "",
       macro_insight: data.macro_insight || "",
       priceData: data.prices,                    // full prices object (with available/unavailable)
@@ -769,6 +821,20 @@ async function doSearch(force){
     };
 
     renderStage();
+
+    if(imageUrl){
+      debrandFromUrl(imageUrl).then(result => {
+        if(current && result){
+          current.debrandedImg = result;
+          current.debrandPending = false;
+          renderStage();
+          if(revealed) renderResults();
+        } else if(current){
+          current.debrandPending = false;
+          renderStage();
+        }
+      });
+    }
   } catch(e) {
     clearInterval(loadTimer);
     $("#searchMsg").innerHTML = t('errNetworkAI');
@@ -785,8 +851,17 @@ function renderStage(){
   const priceText = homePrice ? fmt(homePrice, homeCur()) : t('stickerPrice');
 
   let imgHtml;
-  if(it.img){
-    imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div><div class="obj-cap">${t('capOriginal')}</div></div>`;
+  if(revealed){
+    const original = it.img ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.img)}" alt="original" onerror="this.parentElement.style.display='none'"><div class="obj-cap" style="display:block">${t('capOriginal')}</div></div>` : "";
+    const after = it.debrandedImg ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.debrandedImg)}" alt="logo removed"><div class="obj-cap" style="display:block">${t('capAIremoved')}</div></div>` : "";
+    imgHtml = `<div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px">${original}${after}</div>`;
+  } else if(it.debrandedImg){
+    imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img" src="${esc(it.debrandedImg)}" alt="${esc(it.category)}"></div><div class="obj-cap">${t('capLogoByAI')}</div></div>`;
+  } else if(it.img){
+    const pendingNote = it.debrandPending
+      ? `<div class="obj-cap" style="color:var(--gold);margin-bottom:10px;text-transform:none;letter-spacing:.04em;font-style:italic"><em>${t('aiRemoving')}</em></div>`
+      : "";
+    imgHtml = `<div class="object-wrap">${pendingNote}<div class="img-holder"><img class="obj-img soft" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div><div class="obj-cap">${t('capLogoBlurred')}</div></div>`;
   } else {
     imgHtml = `<div class="object-wrap"><div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">${t('objWithoutLabel')}</div></div></div>`;
   }
