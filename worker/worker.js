@@ -7,7 +7,7 @@
      GET  /img?url=  → image proxy (bypasses origin hotlink protection)
    ========================================================================== */
 
-import { scrapeAll } from "./scrape-core.mjs";
+import { scrapeAll, parseProductHtml } from "./scrape-core.mjs";
 
 const VALID_CURRENCIES = ["USD","CAD","EUR","GBP","CHF","JPY","KRW"];
 // Fallback only — value of 1 unit in USD — used if the live FX API is unreachable.
@@ -208,17 +208,19 @@ async function geminiEnrich(inputUrl, productName, homeCurrency, homePrices, gem
 }
 
 // Vision fallback: screenshot the product page (closing locale modals) and read price+currency
-// off the image with Gemini vision. Returns {price, currency, name} or null. The caller
+// off the image with Gemini vision. Returns {price, currency, name, image} or null. The caller
 // (scrape-core) re-checks currency + sanity, so a misread can only fail, never inject a bad price.
 async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey) {
-  // 1. screenshot via Firecrawl (rendered + stealth; Escape dismisses geo/locale modals)
-  let shot = "";
+  // 1. screenshot + rendered html via Firecrawl (rendered + stealth; Escape dismisses geo/locale modals).
+  // We also pull `html` so we can extract a product image — text-blocked brands (e.g. Zara) come via
+  // vision for ALL markets, and without this they'd show no image at all (vision reads only the price).
+  let shot = "", renderedHtml = "";
   try {
     const r = await fetch("https://api.firecrawl.dev/v2/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${fcKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        url, formats: ["screenshot"], proxy: "stealth", timeout: 60000,
+        url, formats: ["screenshot", "html"], proxy: "stealth", timeout: 60000,
         actions: [
           { type: "wait", milliseconds: 7000 },
           { type: "press", key: "Escape" },
@@ -230,6 +232,7 @@ async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey) {
     if (!r.ok) return null;
     const d = await r.json();
     shot = d?.data?.screenshot || (d?.data?.actions?.screenshots || []).slice(-1)[0] || "";
+    renderedHtml = d?.data?.html || d?.data?.rawHtml || "";
     if (!shot) return null;
   } catch { return null; }
 
@@ -269,7 +272,11 @@ async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey) {
     const text = (gd?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
     const parsed = extractJson(text);
     if (parsed && typeof parsed.price === "number" && parsed.price > 0) {
-      return { price: parsed.price, currency: parsed.currency || wantCur, name: parsed.name || null };
+      // Reuse the full image-extraction logic on the rendered html (image only — the price comes from
+      // the screenshot). Gives vision-path products a photo instead of a blank slot.
+      let image = null;
+      if (renderedHtml) { try { image = parseProductHtml(renderedHtml, wantCur, "", { pageUrl: url }).image || null; } catch { /* image best-effort */ } }
+      return { price: parsed.price, currency: parsed.currency || wantCur, name: parsed.name || null, image };
     }
     return null;
   } catch { return null; }
