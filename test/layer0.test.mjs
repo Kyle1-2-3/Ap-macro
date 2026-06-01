@@ -318,3 +318,18 @@ test("parseProductHtml keeps the current price when there is no Shopify markdown
   assert.equal(p.price, 75);
   assert.equal(p.currency, "USD");
 });
+
+test("parseProductHtml uses the struck-through original on a Demandware markdown (Margiela)", () => {
+  // JSON-LD exposes only the sale price (3114); the original (5190) is in a strike-through span
+  // right before the sales span. A recommended item's struck price (930) must NOT be picked.
+  const html = `
+    <script type="application/ld+json">{"@type":"Product","offers":{"price":"3114.00","priceCurrency":"CAD"}}</script>
+    <p class="strike-through list"><span class="value" itemprop="price" content="930.00"> CAD$ 930 </span></p>
+    <div class="product-price"><div class="prices"><div class="price"><span>
+      <span class="strike-through list"><span class="value" itemprop="price" content="5190.00"> CAD$ 5,190 </span><span class="d-none"> - Original Price </span></span>
+      <span class="sales"><span class="value" itemprop="price" content="3114.00"> CAD$ 3,114 </span></span>
+    </span></div></div></div>`;
+  const p = parseProductHtml(html, "CAD", "");
+  assert.equal(p.price, 5190);
+  assert.equal(p.currency, "CAD");
+});

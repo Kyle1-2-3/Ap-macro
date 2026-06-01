@@ -399,7 +399,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // structural "cheapest" result in the cross-country comparison. Shopify carries the original as
   // compare_at_price; no-op for non-sale pages and non-Shopify platforms (returns null).
   if (out.price != null) {
-    const regular = extractShopifyRegularPrice(html, out.price);
+    const regular = extractRegularPrice(html, out.price);
     if (regular) out.price = regular;
   }
 
@@ -525,6 +525,33 @@ export function extractShopifyRegularPrice(html, currentPrice) {
   if (!(compareCents > cents)) return null;          // compare_at <= price → not on sale
   if (compareCents > cents * 20) return null;        // implausible ratio → ignore (safety)
   return currentPrice * (compareCents / cents);      // regular = current × markup ratio
+}
+
+// Generic struck-through "original/list" price (Demandware & most storefronts render the pre-sale
+// price in a strike-through span beside the sales price). Returns it ONLY when it pairs with the
+// CURRENT price right after it (so a recommended item's struck price can't be picked) and is a
+// genuine markdown above it. currentPrice is the already-extracted current/sale price.
+export function extractStruckRegularPrice(html, currentPrice) {
+  if (!html || !currentPrice) return null;
+  const curContent = currentPrice.toFixed(2);                          // "3114.00"
+  const curGroup = Math.round(currentPrice).toLocaleString("en-US");   // "3,114"
+  const re = /class="[^"]*(?:strike-through|strikethrough|price-standard|list-price|original-price|old-price|was-price)[^"]*"[^>]*>[\s\S]{0,160}?content="([\d.]+)"/gi;
+  let m, best = null;
+  while ((m = re.exec(html))) {
+    const orig = parseFloat(m[1]);
+    if (!(orig > currentPrice) || orig > currentPrice * 20) continue;  // must be a real markdown
+    const after = html.slice(m.index, m.index + 700);                  // same price block follows
+    const paired = after.includes(`content="${curContent}"`)
+      || after.includes(` ${curGroup} `) || after.includes(`>${curGroup}<`) || after.includes(`${curGroup}</`);
+    if (paired) best = (best == null) ? orig : Math.min(best, orig);
+  }
+  return best;
+}
+
+// Pre-sale price for the cross-country comparison: Shopify compare_at_price, else a struck-through
+// original. null when there's no markdown (caller keeps the current price).
+export function extractRegularPrice(html, currentPrice) {
+  return extractShopifyRegularPrice(html, currentPrice) || extractStruckRegularPrice(html, currentPrice);
 }
 
 // Return the brace-balanced JSON object literal starting at/after fromIdx (string-aware), or null.
