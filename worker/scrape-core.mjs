@@ -345,17 +345,27 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     if (out.price && (!wantCur || out.currency === wantCur)) break;
   }
 
-  // Layer 1.5: Shopify variant price. When the URL selects a variant (?variant=ID), read THAT
-  // variant's price from the Shopify product JSON, where it is an integer in cents
-  // ("id":45645131972771,…,"price":49200 → 492.00). This is the exact selected-variant price and
-  // beats the loose visible-$ layer, which can otherwise grab a "$150 USD or more" free-shipping
-  // threshold (seen on Thom Browne). No-op without a variant id or a matching cents value.
-  if (out.price == null && opts.pageUrl) {
-    const vid = (String(opts.pageUrl).match(/[?&]variant=(\d{6,})/) || [])[1];
+  // Layer 1.5: Shopify variant price (cents). On Shopify PDPs with no JSON-LD Product (e.g. Thom
+  // Browne) the real price lives only in the variant JSON as an integer in cents — otherwise the
+  // loose visible-$ layer grabs a "$150 USD or more" free-shipping threshold. Two ways to anchor it
+  // to THIS product: (a) the URL's ?variant=<id>; (b) a variant whose "sku" contains the product
+  // code (so a recommended item's variant can't be picked). Bound to a sane price range.
+  if (out.price == null) {
+    let cents = null;
+    const vid = opts.pageUrl ? (String(opts.pageUrl).match(/[?&]variant=(\d{6,})/) || [])[1] : null;
     if (vid) {
       const m = html.match(new RegExp(`"id":${vid}[,"][\\s\\S]{0,200}?"price":(\\d{3,})\\b`));
-      if (m) { const cents = parseInt(m[1], 10); if (cents >= 2000 && cents <= 100000000) out.price = cents / 100; }
+      if (m) cents = parseInt(m[1], 10);
     }
+    if (cents == null && code) {
+      for (const n of codeNeedles(code)) {
+        if (n.length < 5) continue;
+        const m = html.match(new RegExp(`"price":(\\d{3,})[^}]{0,300}?"sku":"[^"]*${n}`, "i"))
+               || html.match(new RegExp(`"sku":"[^"]*${n}[^"]*"[^}]{0,300}?"price":(\\d{3,})`, "i"));
+        if (m) { cents = parseInt(m[1], 10); break; }
+      }
+    }
+    if (cents != null && cents >= 2000 && cents <= 100000000) out.price = cents / 100;
   }
 
   // Layer 2: meta tags.

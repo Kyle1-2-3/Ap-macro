@@ -362,6 +362,17 @@ test("parseProductHtml reads the Shopify variant price, not a $150 free-shipping
   assert.equal(p.currency, "CAD");
 });
 
+test("parseProductHtml reads Shopify variant price by SKU when there's no ?variant= (Thom Browne)", () => {
+  // No JSON-LD Product, no variant param — anchor the cents price to a variant whose SKU contains
+  // the product code, so the free-shipping "$150" sentence isn't picked.
+  const html = `
+    <p>Equivalent purchases of $150 USD or more are eligible for complimentary shipping.</p>
+    <script>var meta = {"product":{"variants":[{"id":111,"price":44000,"name":"POLO - M","sku":"MKP162B-Y6011-100-2"}]}};</script>`;
+  const p = parseProductHtml(html, "CAD", "linen-cotton-4-bar-relaxed-fit-polo-mkp162b-y6011-100", { pageUrl: "https://www.thombrowne.com/en-ca/collections/x/products/p-mkp162b-y6011-100" });
+  assert.equal(p.price, 440);
+  assert.equal(p.currency, "CAD");
+});
+
 test("parseProductHtml absolutizes a root-relative JSON-LD image against the page URL", () => {
   // Off-White (Demandware) exposes the product image in JSON-LD as a root-relative path and has no
   // og:image. Without a base URL it can't be proxied (cleanImageUrl drops a relative string), so the
