@@ -156,8 +156,9 @@ async function geminiEnrich(inputUrl, productName, homeCurrency, homePrices, gem
   const prompt = [
     `A luxury product was found at: ${inputUrl} (name: "${productName || "unknown"}").`,
     `Its verified retail prices, converted to ${homeCurrency}, by country: ${JSON.stringify(homePrices)}.`,
+    `VAT/consumption tax per market (tax-INCLUSIVE in the listed price, except the US where sales tax is added at the register): US none, Canada 5% GST + provincial, France 20%, Italy 22%, United Kingdom 20%, Switzerland 8.1%, Japan 10%, South Korea 10%.`,
     `Return ONLY a JSON object:`,
-    `{ "brand": "BRAND", "origin": "country the brand/house is based in", "category": "short noun phrase e.g. handbag/watch", "blurb": "one sentence on what it is and how production cost compares to retail", "macro_insight": "ONE sentence (<=35 words) tying THIS result to one AP Macro concept (exchange rates / PPP / VAT & tariffs / shopping tourism / origin advantage); name which country is cheapest and why." }`,
+    `{ "brand": "BRAND", "origin": "country the brand/house is based in", "category": "short noun phrase e.g. handbag/watch", "blurb": "one sentence on what it is and how production cost compares to retail", "macro_insight": "ONE accurate sentence (<=35 words) linking THIS result to one AP Macro concept (exchange rates / PPP & law of one price / VAT & tariffs / shopping tourism / origin advantage). Name the cheapest market and the REAL reason, consistent with the VAT figures above. Rules: a market can be cheapest DESPITE high VAT when its pre-tax list price is set low — NEVER claim low or favorable VAT causes a low price unless that market's VAT above is actually among the lowest in the set; the EU is a single market with NO internal tariffs, so do NOT cite EU tariff structures; if the brand's home country ties for cheapest, attribute it to origin advantage (no import duty at the source)." }`,
   ].join("\n");
   try {
     const res = await fetch(
