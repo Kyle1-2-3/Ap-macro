@@ -13,13 +13,32 @@ const VALID_CURRENCIES = ["USD","CAD","EUR","GBP","CHF","JPY","KRW"];
 // Fallback only — value of 1 unit in USD — used if the live FX API is unreachable.
 const FX_FALLBACK_USD = { USD:1, CAD:0.73, EUR:1.08, GBP:1.27, CHF:1.12, JPY:0.0064, KRW:0.00073 };
 const MODEL = "gemini-2.5-flash";
-const API_KEY_FALLBACK = ""; // set GEMINI_API_KEY as Cloudflare Worker secret
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+
+// Browser origins allowed to call the paid endpoints (/scrape, /debrand). Blocks casual cross-site
+// embedding that would burn the Firecrawl/Gemini budget. NOTE: this only stops browser callers
+// (a scripted client sends no Origin and is allowed) — hard rate limiting belongs in a Cloudflare
+// dashboard Rate Limiting rule, which can't be provisioned from worker code.
+const ALLOWED_ORIGINS = new Set([
+  "https://maotabata-apmacro.com",
+  "https://www.maotabata-apmacro.com",
+  "https://kyle1-2-3.github.io",
+]);
+function originAllowed(request) {
+  const o = request.headers.get("Origin");
+  if (!o) return true;                       // non-browser (curl/native) — Origin gate can't apply
+  if (ALLOWED_ORIGINS.has(o)) return true;
+  try { const h = new URL(o).hostname; if (h === "localhost" || h === "127.0.0.1") return true; } catch {}
+  return false;
+}
+
+// Reject oversized /debrand payloads before spending a Gemini call. ~10MB of base64 ≈ 7.5MB image.
+const MAX_DEBRAND_B64 = 10 * 1024 * 1024;
 
 /* ---------- Domain helpers ---------- */
 
@@ -52,6 +71,7 @@ function preValidateUrl(urlStr) {
 /* ---------- POST /scrape handler ---------- */
 
 async function handleScrape(request, env, url) {
+  if (!originAllowed(request)) return json({ found: false, error: "Forbidden origin" }, 403);
   let body;
   try { body = await request.json(); } catch {
     return json({ found: false, error: "Invalid JSON body" }, 400);
@@ -85,7 +105,11 @@ async function handleScrape(request, env, url) {
   // tracking-param stripper makes ?nocache=... in the URL useless for cache-busting (same key).
   const noCache = body.refresh === true || body.nocache === true;
   const cache = (typeof caches !== "undefined" && caches.default) ? caches.default : null;
-  const cacheKey = `https://cache.scrape/?u=${encodeURIComponent(inputUrl)}&c=${homeCurrency}`;
+  // Cache by URL only — the scrape (local prices, product, available markets) is currency-independent;
+  // the client converts to the chosen currency from the `fx` table below, so we don't re-scrape per
+  // currency. The cached response carries home_prices framed in whatever currency was first requested,
+  // but the front end recomputes home values client-side from local_prices + fx.
+  const cacheKey = `https://cache.scrape/?u=${encodeURIComponent(inputUrl)}`;
   if (cache && !noCache) { const hit = await cache.match(cacheKey); if (hit) return hit; }
 
   // Core: scrape all 8 official country pages directly, verify, never fake.
@@ -96,25 +120,28 @@ async function handleScrape(request, env, url) {
   const visionFn = GEMINI_KEY_V
     ? (u, country, wantCur) => visionExtractPrice(u, country, wantCur, FIRECRAWL_KEY, GEMINI_KEY_V)
     : null;
-  const ratesPromise = getRates(homeCurrency);
+  const fxPromise = getUsdRates();
   const core = await scrapeAll(inputUrl, FIRECRAWL_KEY, fetch, visionFn);
   if (!core.found) {
     return json({ found: false, error: core.error || "Could not read official prices for that link", failed: core.failed || [] }, 200);
   }
 
-  // Build local + home-currency price maps.
-  const rates = (await ratesPromise) || fallbackRates(homeCurrency);
+  // FX as USD-value-per-unit so the client can convert local prices to ANY home currency.
+  const fx = (await fxPromise) || { ...FX_FALLBACK_USD, __date: null };
+  const homeUsd = fx[homeCurrency] || 1;
   const prices = {}, localPrices = {}, homePrices = {};
   for (const [country, info] of Object.entries(core.prices)) {
     prices[country] = { price: info.price, currency: info.currency, available: true, via: info.via || "text" };
     localPrices[country] = info.price;
-    const rate = rates[info.currency];
-    if (typeof rate === "number" && rate > 0) homePrices[country] = Math.round(info.price / rate);
+    const lu = fx[info.currency];
+    if (typeof lu === "number" && lu > 0) homePrices[country] = Math.round(info.price * lu / homeUsd);
   }
+  const fxOut = {};
+  for (const c of VALID_CURRENCIES) fxOut[c] = fx[c];
   const failed = (core.failed || []).map(f => ({ country: f.country, available: false, reason: f.reason }));
 
   // Enrich (origin/category/blurb/brand) + macro insight via Gemini — best-effort, optional.
-  const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
+  const GEMINI_KEY = env.GEMINI_API_KEY || "";
   let enrich = {};
   if (GEMINI_KEY) {
     enrich = await geminiEnrich(inputUrl, core.name, homeCurrency, homePrices, GEMINI_KEY) || {};
@@ -139,7 +166,8 @@ async function handleScrape(request, env, url) {
     local_prices: localPrices,
     home_prices: homePrices,
     home_currency: homeCurrency,
-    fx_date: rates.__date || null,
+    fx: fxOut,                 // USD value of 1 unit per currency — client converts to any home currency
+    fx_date: fx.__date || null,
     failed,
     macro_insight: str(enrich.macro_insight) || "",
   }, 200);
@@ -208,7 +236,7 @@ async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey) {
       if (!ir.ok) return null;
       mime = ir.headers.get("content-type") || "image/png";
       const buf = await ir.arrayBuffer();
-      b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      b64 = bytesToBase64(buf);
     } else {
       b64 = shot.replace(/^data:image\/\w+;base64,/, "");
     }
@@ -260,17 +288,24 @@ async function handleImageProxy(url) {
   const imgUrl = url.searchParams.get("url");
   if (!imgUrl) return new Response("Missing ?url=", { status: 400, headers: CORS });
 
+  // Guard against open-proxy/SSRF abuse: only proxy https URLs, and only if the origin actually
+  // returns image bytes. Without this, /img?url= would relay ANY URL through our domain.
+  let parsedImg;
+  try { parsedImg = new URL(imgUrl); } catch { return new Response("Invalid url", { status: 400, headers: CORS }); }
+  if (parsedImg.protocol !== "https:") return new Response("Only https image URLs are allowed", { status: 400, headers: CORS });
+
   try {
     const imgRes = await fetch(imgUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
         "Accept": "image/*,*/*;q=0.8",
-        "Referer": new URL(imgUrl).origin + "/",
+        "Referer": parsedImg.origin + "/",
       },
     });
     if (!imgRes.ok) return new Response("Image fetch failed", { status: 502, headers: CORS });
 
-    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+    const contentType = imgRes.headers.get("content-type") || "";
+    if (!/^image\//i.test(contentType)) return new Response("Not an image", { status: 415, headers: CORS });
     const body = await imgRes.arrayBuffer();
 
     return new Response(body, {
@@ -283,6 +318,7 @@ async function handleImageProxy(url) {
 }
 
 async function handleDebrand(request, env) {
+  if (!originAllowed(request)) return json({ success: false, error: "Forbidden origin" }, 403);
   let body;
   try { body = await request.json(); } catch {
     return json({ success: false, error: "Invalid JSON body" }, 400);
@@ -292,8 +328,11 @@ async function handleDebrand(request, env) {
   if (!image || typeof image !== "string") {
     return json({ success: false, error: "Missing 'image' (base64 string)" }, 400);
   }
+  if (image.length > MAX_DEBRAND_B64) {
+    return json({ success: false, error: "Image too large" }, 413);
+  }
 
-  const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
+  const GEMINI_KEY = env.GEMINI_API_KEY || "";
   const prompt = [
     "You are an image editor that removes brand identifiers from product photos.",
     "",
@@ -361,6 +400,18 @@ function extractJson(text) {
   return null;
 }
 
+// Base64-encode bytes in 32KB chunks. `btoa(String.fromCharCode(...bytes))` spreads every byte as a
+// function argument and throws RangeError (call-stack/arg-limit) once a screenshot exceeds ~64KB.
+function bytesToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
 function str(v) { return typeof v === "string" ? v.trim() : ""; }
 function cleanImageUrl(v) {
   const s = str(v);
@@ -386,8 +437,13 @@ async function getRates(base) {
   }
 }
 
-function fallbackRates(base) {
-  const r = { __date: null };
-  for (const k of VALID_CURRENCIES) r[k] = FX_FALLBACK_USD[base] / FX_FALLBACK_USD[k];
-  return r;
+// USD value of 1 unit of each currency (USD-per-unit), from live FX. Lets the client convert local
+// prices to ANY home currency without a re-scrape. Returns null if any currency is missing.
+async function getUsdRates() {
+  const r = await getRates("USD");          // r[X] = units of X per 1 USD
+  if (!r) return null;
+  const out = { __date: r.__date || null };
+  for (const c of VALID_CURRENCIES) out[c] = c === "USD" ? 1 : (r[c] > 0 ? 1 / r[c] : null);
+  for (const c of VALID_CURRENCIES) if (!(out[c] > 0)) return null;
+  return out;
 }

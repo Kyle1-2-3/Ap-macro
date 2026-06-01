@@ -61,6 +61,20 @@ export function detectDemandware(html, inputUrl) {
 
 const GLOBAL_E_SESSION_CACHE = new Map();
 const GLOBAL_E_COOKIE_CACHE = new Map();
+// Global-e sessions/cookies expire server-side; without a TTL the module-level cache would reuse a
+// dead session for the isolate's whole lifetime, intermittently failing Global-e brands. Re-probe
+// after 10 minutes. (undefined = miss; a cached null = a known recent failure, not re-probed yet.)
+const GLOBAL_E_TTL_MS = 10 * 60 * 1000;
+function ttlGet(map, key) {
+  const e = map.get(key);
+  if (!e) return undefined;
+  if (Date.now() > e.exp) { map.delete(key); return undefined; }
+  return e.value;
+}
+function ttlSet(map, key, value) {
+  map.set(key, { value, exp: Date.now() + GLOBAL_E_TTL_MS });
+  return value;
+}
 
 // Detect Global-e / region-gated storefronts. These pages use a browser session state
 // (country + currency cookie) instead of a standalone per-country URL.
@@ -79,7 +93,8 @@ export function detectGlobalE(html) {
 async function probeGlobalESession(globalE, fetchImpl = fetch) {
   if (!globalE?.merchantId) return null;
   const key = String(globalE.merchantId);
-  if (GLOBAL_E_SESSION_CACHE.has(key)) return GLOBAL_E_SESSION_CACHE.get(key);
+  const cached = ttlGet(GLOBAL_E_SESSION_CACHE, key);
+  if (cached !== undefined) return cached;
   try {
     const res = await fetchImpl(`https://gepi.global-e.com/includes/js/${globalE.merchantId}`, {
       headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
@@ -89,8 +104,7 @@ async function probeGlobalESession(globalE, fetchImpl = fetch) {
     const sessionId = (js.match(/SessionId="([^"]+)"/) || [])[1] || null;
     const geBaseUrl = (js.match(/GeBaseUrl="([^"]+)"/) || [])[1] || "//gepi.global-e.com/";
     const out = sessionId ? { sessionId, geBaseUrl } : null;
-    GLOBAL_E_SESSION_CACHE.set(key, out);
-    return out;
+    return ttlSet(GLOBAL_E_SESSION_CACHE, key, out);
   } catch {
     return null;
   }
@@ -99,7 +113,8 @@ async function probeGlobalESession(globalE, fetchImpl = fetch) {
 async function buildGlobalELocalizeHeaders(globalE, country, fetchImpl = fetch) {
   if (!globalE?.merchantId) return null;
   const cacheKey = `${globalE.merchantId}:${country}`;
-  if (GLOBAL_E_COOKIE_CACHE.has(cacheKey)) return GLOBAL_E_COOKIE_CACHE.get(cacheKey);
+  const cached = ttlGet(GLOBAL_E_COOKIE_CACHE, cacheKey);
+  if (cached !== undefined) return cached;
   const session = await probeGlobalESession(globalE, fetchImpl);
   if (!session?.sessionId) return null;
   const wantCur = CURRENCY_OF[country];
@@ -124,8 +139,7 @@ async function buildGlobalELocalizeHeaders(globalE, country, fetchImpl = fetch) 
         "Accept-Language": `${LANG_OF[country] || "en"},en;q=0.9`,
       },
     };
-    GLOBAL_E_COOKIE_CACHE.set(cacheKey, out);
-    return out;
+    return ttlSet(GLOBAL_E_COOKIE_CACHE, cacheKey, out);
   } catch {
     return null;
   }

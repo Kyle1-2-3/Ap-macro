@@ -490,7 +490,6 @@ const STR = {
 const T = {
   en:{
     rateLive:(c)=>`Prices are looked up live and shown in ${c} — no fixed exchange rate.`,
-    updatingPrices:"Updating prices in your currency",
     errInvalidUrl:"Please enter a valid HTTPS URL from a brand website.",
     errBlocked:(domain)=>`Third-party retailers like "${domain}" are not supported.`,
     loadScraping:["Reading the official product page","Finding country-specific pages","Verifying code and currency","Comparing 8 markets"],
@@ -531,7 +530,6 @@ const T = {
   },
   ja:{
     rateLive:(c)=>`価格は ${c} でリアルタイムに取得しています（固定の為替レートは使用していません）。`,
-    updatingPrices:"選択した通貨で価格を更新中",
     errInvalidUrl:"ブランドサイトの有効なHTTPS URLを入力してください。",
     errBlocked:(domain)=>`「${domain}」などのセレクトショップには対応していません。`,
     loadScraping:["商品ページをスクレイピング中","8つの市場で価格を比較中","為替レートを確認中","もうすぐです"],
@@ -606,7 +604,6 @@ const $ = s => document.querySelector(s);
 let homeCountry = "United States";
 let current = null;     // selected item
 let revealed = false;
-let lastQuery = "";     // last product looked up (so a currency switch can re-run it)
 let searchSeq = 0;      // bumped per search; a response that isn't the latest is dropped
 let lastRevealAnswer = null;  // "yes"/"no" — kept so a language switch can re-render the reveal quip
 const homeCur = () => CURRENCY_OF[homeCountry];
@@ -615,8 +612,16 @@ function fmt(amount, cur){
   try{ return new Intl.NumberFormat(undefined,{style:"currency",currency:cur,maximumFractionDigits:0}).format(amount); }
   catch(e){ return cur+" "+Math.round(amount).toLocaleString(); }
 }
-function toHome(amount, fromCur){ return (amount * RATES[fromCur]) / RATES[homeCur()]; }
-function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+// Convert a local-currency amount to the selected home currency. Uses the live USD-per-unit `fx`
+// table returned by the last scrape (so switching currency needs NO re-scrape), falling back to the
+// static RATES table. Both are USD-value-per-unit, so the math is identical.
+function toHome(amount, fromCur){
+  const fx = (current && current.fx) || RATES;
+  const f = fx[fromCur], h = fx[homeCur()];
+  if(!(f > 0) || !(h > 0)) return (amount * RATES[fromCur]) / RATES[homeCur()];
+  return (amount * f) / h;
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 /* ---- locale dropdown ---- */
 function buildHomeSelect(){
@@ -627,28 +632,13 @@ function buildHomeSelect(){
   updateRateNote();
 }
 
-// Prices now come from the API already in the selected currency, so changing the
-// currency re-runs the lookup rather than doing a client-side conversion.
-async function refetchForCurrency(){
-  const url = lastQuery || "";
-  if(!url){ renderStage(); if(revealed) renderResults(); return; }
-  const wasRevealed = revealed;
-  $(wasRevealed ? "#results" : "#stage").innerHTML = `<div class="loading"><em>${t('updatingPrices')}<span class="dots"></span></em></div>`;
-  try{
-    const res = await fetch(`${WORKER_URL}/scrape`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, homeCurrency: homeCur() })
-    });
-    const data = await res.json();
-    if(data && data.found){
-      if(data.local_prices) current.prices = data.local_prices;
-      current.priceData = mergePriceData(data);
-      current.homePrices = data.home_prices || null;
-    }
-  }catch(e){ /* keep existing data; render falls back to static conversion */ }
+// Local prices are currency-independent and the live `fx` table came back with the scrape, so a
+// currency change is a pure client-side re-render via toHome() — no re-scrape (saves a full
+// 8-country Firecrawl/Gemini run per currency switch).
+function refetchForCurrency(){
+  if(!current) return;
   renderStage();
-  if(wasRevealed) renderResults();
+  if(revealed) renderResults();
 }
 function updateRateNote(){
   $("#rateNote").textContent = t('rateLive', homeCur());
@@ -742,7 +732,6 @@ async function doSearch(force){
   const v = validateUrl(url);
   if(!v.valid){ $("#searchMsg").textContent = v.msg; return; }
 
-  lastQuery = url;
   const mySeq = ++searchSeq;   // any earlier in-flight search whose response lands after this is stale
   $("#searchMsg").innerHTML = "";
   $("#debrandSection").classList.remove("hidden");
@@ -791,8 +780,8 @@ async function doSearch(force){
       blurb: data.product.blurb || "",
       macro_insight: data.macro_insight || "",
       priceData: mergePriceData(data),            // confirmed + unconfirmed markets (failed → unavailable)
-      prices: data.local_prices || {},            // local currency prices (for legacy toHome)
-      homePrices: data.home_prices || null,
+      prices: data.local_prices || {},            // local currency prices — converted client-side via fx
+      fx: data.fx || null,                        // live USD-per-unit FX → convert to any currency, no re-scrape
     };
 
     renderStage();
@@ -818,9 +807,8 @@ async function doSearch(force){
 function renderStage(){
   if(!current) return;
   const it = current;
-  const homePrice = (it.homePrices && typeof it.homePrices[homeCountry] === "number")
-    ? it.homePrices[homeCountry]
-    : ((it.prices && typeof it.prices[homeCountry] === "number") ? toHome(it.prices[homeCountry], CURRENCY_OF[homeCountry]) : null);
+  const homeLocal = (it.prices && typeof it.prices[homeCountry] === "number") ? it.prices[homeCountry] : null;
+  const homePrice = homeLocal !== null ? toHome(homeLocal, CURRENCY_OF[homeCountry]) : null;
   const priceText = homePrice ? fmt(homePrice, homeCur()) : t('stickerPrice');
 
   let imgHtml;
@@ -916,7 +904,7 @@ function renderResults(){
       continue;
     }
 
-    const home = (it.homePrices && typeof it.homePrices[country] === "number") ? it.homePrices[country] : toHome(local, localCur);
+    const home = toHome(local, localCur);
     availableRows.push({ country, cc, localCur, local, home, isHome });
   }
 
