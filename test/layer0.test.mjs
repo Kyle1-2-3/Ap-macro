@@ -11,6 +11,7 @@ import {
   extractCode,
   parseProductHtml,
   scrapeCountry,
+  scrapeAll,
 } from "../worker/scrape-core.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -345,4 +346,22 @@ test("parseProductHtml uses the struck original on a markdown in a no-decimal cu
   const p = parseProductHtml(html, "KRW", "");
   assert.equal(p.price, 6790000);
   assert.equal(p.currency, "KRW");
+});
+
+test("scrapeAll seeds the input market from discovery HTML when per-country fetches fail", async () => {
+  // Single-region site (Korea-only Cafe24): only the discovery fetch succeeds; every per-country
+  // candidate 404s and the subrequest budget trips. The input market's price must still come back.
+  const krHtml = `<script type="application/ld+json">{"@type":"Product","offers":{"price":"380000","priceCurrency":"KRW"}}</script>`;
+  let n = 0;
+  const fakeFetch = async () => {
+    n++;
+    return n === 1
+      ? { ok: true, status: 200, text: async () => krHtml, json: async () => ({}) }   // discovery
+      : { ok: false, status: 404, text: async () => "", json: async () => ({}) };      // everything else
+  };
+  const r = await scrapeAll("https://wooyoungmi.com/product/detail.html?product_no=7656", "FAKEKEY", fakeFetch, null);
+  assert.equal(r.found, true);
+  assert.ok(r.prices["South Korea"], "Korea should be seeded from discovery HTML");
+  assert.equal(r.prices["South Korea"].price, 380000);
+  assert.ok(n < 50, `subrequest ceiling should hold (was ${n})`);
 });

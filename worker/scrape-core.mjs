@@ -631,7 +631,7 @@ export async function mapLimit(items, limit, fn) {
 // returns a 4.5KB "Access Denied" for rawHtml on many brands. Retries transient 408/429/5xx
 // (and network errors) with exponential backoff; these appear randomly under load and are the
 // main cause of non-deterministic, flaky coverage.
-export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch, extraHeaders = null) {
+export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch, extraHeaders = null, budget = null) {
   const req = {
     url: targetUrl,
     formats: ["html"],
@@ -644,6 +644,8 @@ export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch, ex
   const reqBody = JSON.stringify(req);
   let res, delay = 1000;
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (budget && budget.used >= budget.max) return { error: "Subrequest budget reached" };
+    if (budget) budget.used++;
     try {
       res = await fetchImpl("https://api.firecrawl.dev/v2/scrape", {
         method:"POST",
@@ -677,7 +679,9 @@ function isDemandwareControllerUrl(targetUrl) {
   }
 }
 
-async function directGetHtml(targetUrl, fetchImpl = fetch, extraHeaders = null) {
+async function directGetHtml(targetUrl, fetchImpl = fetch, extraHeaders = null, budget = null) {
+  if (budget && budget.used >= budget.max) return { error: "Subrequest budget reached" };
+  if (budget) budget.used++;
   try {
     const headers = {
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -697,12 +701,12 @@ async function directGetHtml(targetUrl, fetchImpl = fetch, extraHeaders = null) 
 }
 
 // Scrape one URL then verify (product code present + currency matches the country).
-export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch, structuredOnly = false, extraHeaders = null, regionLocked = false) {
+export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fetch, structuredOnly = false, extraHeaders = null, regionLocked = false, budget = null) {
   if (!fcKey) return { ok:false, country, reason:"No Firecrawl key" };
   const wantCur = CURRENCY_OF[country];
   let got = null;
   let viaFetch = "firecrawl";
-  const direct = await directGetHtml(targetUrl, fetchImpl, extraHeaders);
+  const direct = await directGetHtml(targetUrl, fetchImpl, extraHeaders, budget);
   if (!direct.error) {
     got = direct;
     viaFetch = "direct";
@@ -711,7 +715,7 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
     if (regionLocked && extraHeaders) {
       return { ok:false, country, reason:`Region-gated storefront not localized: ${direct.error || "No direct HTML"}`, url:targetUrl };
     }
-    got = await fcGetHtml(targetUrl, country, fcKey, fetchImpl, extraHeaders);
+    got = await fcGetHtml(targetUrl, country, fcKey, fetchImpl, extraHeaders, budget);
   }
   if (got.error) return { ok:false, country, reason:got.error, url:targetUrl };
   const html = got.html;
@@ -745,7 +749,7 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
 // candidates fail and a visionFn is supplied, fall back to reading a screenshot of the most
 // likely URL (the first candidate). The vision result passes the SAME currency + sanity gate,
 // so a wrong read can only fail, never mislead. visionFn(url, country, wantCur) -> {price,currency}|null
-export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch, visionFn = null, structuredOnly = false, regionGate = null) {
+export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch, visionFn = null, structuredOnly = false, regionGate = null, budget = null) {
   if (!candidateUrls || !candidateUrls.length) return { ok:false, country, reason:"No URL for country" };
   let last = { ok:false, country, reason:"No candidate verified" };
   const regionHeaders = regionGate?.kind === "global-e"
@@ -755,13 +759,14 @@ export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchIm
   const headerPasses = regionHeaders ? [regionHeaders, null] : [null];
   for (const headers of headerPasses) {
     for (const u of candidateUrls) {
-      const r = await scrapeOne(u, country, code, fcKey, fetchImpl, structuredOnly, headers, !!regionHeaders);
+      if (budget && budget.used >= budget.max) { last = { ok:false, country, reason:"Subrequest budget reached", url:u }; break; }
+      const r = await scrapeOne(u, country, code, fcKey, fetchImpl, structuredOnly, headers, !!regionHeaders, budget);
       if (r.ok) return r;
       last = r;
     }
   }
-  // Vision fallback — only when text failed and a vision reader is available.
-  if (visionFn) {
+  // Vision fallback — only when text failed, a vision reader is available, and budget remains.
+  if (visionFn && !(budget && budget.used >= budget.max)) {
     const wantCur = CURRENCY_OF[country];
     try {
       const v = await visionFn(candidateUrls[0], country, wantCur);
@@ -830,6 +835,11 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   const code = extractCode(inputUrl);
   const targets = buildCountryUrls(inputUrl);  // may be {} when the URL has no locale segment
   let regionGate = null;
+  // Ceiling on outbound fetches so we never trip Cloudflare's per-invocation subrequest limit
+  // (≈50 on the free plan). When the budget runs out we stop trying candidates and return what
+  // we already have, instead of failing the whole lookup with "Too many subrequests".
+  const budget = { used: 0, max: 35 };
+  const seeded = {};   // input page's own market, read from the discovery HTML (costs no fetch)
 
   // Discovery: read hreflang off the input page → authoritative per-country product URLs straight
   // from the site (no guessing). This is also the ONLY discovery path for locale-less URLs like
@@ -839,8 +849,8 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   if (fcKey) {
     try {
       const inCountry = inputCountryOf(inputUrl) || "United States";
-      const direct = await directGetHtml(inputUrl, fetchImpl);
-      const got = direct.html ? direct : await fcGetHtml(inputUrl, inCountry, fcKey, fetchImpl);
+      const direct = await directGetHtml(inputUrl, fetchImpl, null, budget);
+      const got = direct.html ? direct : await fcGetHtml(inputUrl, inCountry, fcKey, fetchImpl, null, budget);
       if (got.html) {
         regionGate = detectGlobalE(got.html);
         const hl = parseHreflang(got.html);
@@ -856,12 +866,37 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
         // currency + sanity + outlier gates still apply, so a bad controller read can only fail.
         const dw = detectDemandware(got.html, inputUrl);
         if (dw) applyDemandwareTargets(targets, dw, code);
+
+        // Seed the input page's OWN market straight from this already-fetched HTML (no extra
+        // subrequest). Guarantees a single-region site (e.g. a Korea-only Cafe24 shop) still
+        // returns its one real price instead of failing entirely. Seed only when the currency
+        // maps to a single country (so EUR's France/Italy aren't both filled from one page),
+        // unless the URL itself names the country. Same currency + sanity gate as a real scrape.
+        const inCRaw = inputCountryOf(inputUrl);
+        for (const country of COUNTRIES) {
+          const wantCur = CURRENCY_OF[country];
+          const unique = COUNTRIES.filter((c) => CURRENCY_OF[c] === wantCur).length === 1;
+          if (!unique && country !== inCRaw) continue;
+          const p = parseProductHtml(got.html, wantCur, code, {});
+          if (p.price && p.currency === wantCur) {
+            const usd = p.price * (USD_PER[wantCur] || 1);
+            if (usd >= 20 && usd <= 1_000_000) seeded[country] = { price: p.price, currency: wantCur, image: p.image, name: p.name };
+          }
+        }
       }
     } catch { /* keep whatever candidates we have */ }
   }
 
   // Only now decide there's nothing to try (neither a locale pattern nor hreflang yielded URLs).
   if (!Object.keys(targets).length) {
+    const sp = Object.entries(seeded);
+    if (sp.length) {                       // discovery HTML still gave us the input market's price
+      const prices = {};
+      for (const [c, info] of sp) prices[c] = { price: info.price, currency: info.currency, via: "text" };
+      const first = sp[0][1];
+      return { found:true, code, prices, image:first.image||null, name:first.name||null,
+        failed: COUNTRIES.filter(c => !prices[c]).map(c => ({ country:c, reason:"No per-country page (single-region site)" })) };
+    }
     return { found:false, error:"Could not derive per-country URLs (no locale segment, no hreflang)", code, prices:{}, failed:[] };
   }
 
@@ -871,9 +906,10 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   // instead of ~200s serial) — critical for Rimowa-class pages where most countries use vision.
   const settled = await mapLimit(
     COUNTRIES, 8,
-    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, false, regionGate)
+    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, false, regionGate, budget)
   );
-  const prices = {}, failed = [];
+  const prices = {};
+  let failed = [];
   let image = null, name = null;
   for (const r of settled) {
     if (r.ok) {
@@ -884,6 +920,17 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
       failed.push({ country:r.country, reason:r.reason });
     }
   }
+
+  // Fold in any market seeded from the discovery HTML that the per-country scrape didn't already
+  // resolve (e.g. the per-country fetch hit the subrequest ceiling). Keeps the input market's
+  // real price even when the rest of the lookup couldn't run.
+  for (const [country, info] of Object.entries(seeded)) {
+    if (prices[country]) continue;
+    prices[country] = { price:info.price, currency:info.currency, via:"text" };
+    if (!image && info.image) image = info.image;
+    if (!name && info.name) name = info.name;
+  }
+  failed = failed.filter(f => !prices[f.country]);
 
   // Cross-country outlier rejection. A single page can expose several prices (recommended items,
   // installment amounts, accessories) and the per-page parser may grab the wrong one — e.g. a JP
