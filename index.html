@@ -714,41 +714,6 @@ function loadImage(url){
   });
 }
 
-function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
-
-function blurLogoBoxes(canvas, boxes){
-  const ctx = canvas.getContext("2d");
-  const w = canvas.width, h = canvas.height;
-  for(const box of boxes || []){
-    let x = Math.round((Number(box.x) || 0) * w / 1000);
-    let y = Math.round((Number(box.y) || 0) * h / 1000);
-    let bw = Math.round((Number(box.w) || 0) * w / 1000);
-    let bh = Math.round((Number(box.h) || 0) * h / 1000);
-    if(bw < 4 || bh < 4) continue;
-
-    const pad = Math.round(Math.max(6, Math.min(bw, bh) * 0.18));
-    x = clamp(x - pad, 0, w - 1);
-    y = clamp(y - pad, 0, h - 1);
-    bw = clamp(bw + pad * 2, 1, w - x);
-    bh = clamp(bh + pad * 2, 1, h - y);
-
-    const tmp = document.createElement("canvas");
-    tmp.width = bw; tmp.height = bh;
-    const tctx = tmp.getContext("2d");
-    tctx.drawImage(canvas, x, y, bw, bh, 0, 0, bw, bh);
-
-    ctx.save();
-    ctx.filter = "blur(14px)";
-    ctx.drawImage(tmp, x, y, bw, bh);
-    ctx.restore();
-
-    ctx.save();
-    ctx.globalAlpha = 0.18;
-    ctx.drawImage(tmp, x, y, bw, bh);
-    ctx.restore();
-  }
-}
-
 /* ---- debrand from a URL (proxy -> canvas -> /debrand) ---- */
 async function debrandFromUrl(imageUrl){
   try {
@@ -771,10 +736,7 @@ async function debrandFromUrl(imageUrl){
       body: JSON.stringify({ image: base64, mimeType: "image/jpeg" })
     });
     const d = await res.json();
-    if(!d.success) return null;
-    if(d.image) return `data:${d.mimeType};base64,${d.image}`;
-    blurLogoBoxes(canvas, d.boxes || []);
-    return canvas.toDataURL("image/jpeg", 0.9);
+    return d.success ? `data:${d.mimeType};base64,${d.image}` : null;
   } catch(e) {
     console.warn("debrand failed:", e);
     return null;

@@ -632,21 +632,18 @@ async function handleDebrand(request, env) {
 
   const GEMINI_KEY = env.GEMINI_API_KEY || API_KEY_FALLBACK;
   const prompt = [
-    "Find visible brand identifiers in this product photo. Do not edit the image.",
+    "You are an image editor that removes brand identifiers from product photos.",
     "",
-    "Return ONLY a JSON object with this exact shape:",
-    `{ "boxes": [ { "x": 0, "y": 0, "w": 0, "h": 0, "label": "short reason" } ] }`,
-    "",
-    "Coordinates must be normalized integers from 0 to 1000, where x/y are the top-left corner and w/h are width/height.",
-    "Include only explicit brand marks: readable logos, monograms, brand-name text, engraved name plates, and iconic brand patterns.",
-    "Use the smallest tight box that covers the brand mark. Do not include the whole product, handles, wheels, seams, shadows, or blank background.",
-    "If there is no clear brand identifier, return { \"boxes\": [] }.",
+    "RULES:",
+    "1. Only remove visible brand logos, monograms, brand name text, and iconic brand patterns (e.g. LV monogram, Gucci stripe). Replace each removed area with the surrounding material's texture, color, and grain so it looks natural.",
+    "2. If you cannot find any logo or brand marking in the image, return the image COMPLETELY UNCHANGED. Do not modify it at all.",
+    "3. Do NOT alter anything else: keep the exact same colors, lighting, shadows, background, composition, resolution, and aspect ratio. The only difference should be the removed logos.",
   ].join("\n");
 
   let geminiRes;
   try {
     geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${GEMINI_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -657,7 +654,7 @@ async function handleDebrand(request, env) {
               { inline_data: { mime_type: mimeType || "image/jpeg", data: image } },
             ],
           }],
-          generationConfig: { temperature: 0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
         }),
       }
     );
@@ -671,24 +668,19 @@ async function handleDebrand(request, env) {
   }
 
   const data = await geminiRes.json();
-  const text = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-  const parsed = extractJson(text) || {};
-  const boxes = Array.isArray(parsed.boxes) ? parsed.boxes : [];
-  const cleanBoxes = boxes.map(b => ({
-    x: clampBoxNum(b.x),
-    y: clampBoxNum(b.y),
-    w: clampBoxNum(b.w),
-    h: clampBoxNum(b.h),
-    label: str(b.label).slice(0, 80),
-  })).filter(b => b.w > 0 && b.h > 0);
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  const imgPart = parts.find(p => p.inlineData || p.inline_data);
 
-  return json({ success: true, boxes: cleanBoxes }, 200);
-}
+  if (!imgPart) {
+    return json({ success: false, error: "Gemini did not return an edited image" }, 200);
+  }
 
-function clampBoxNum(v) {
-  const n = Math.round(Number(v));
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1000, n));
+  const img = imgPart.inlineData || imgPart.inline_data;
+  return json({
+    success: true,
+    image: img.data,
+    mimeType: img.mimeType || img.mime_type || "image/png",
+  }, 200);
 }
 
 function buildPrompt(q, displayCur) {
