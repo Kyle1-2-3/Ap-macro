@@ -11,6 +11,7 @@ import {
   extractCode,
   parseProductHtml,
   scrapeCountry,
+  scrapeOne,
   scrapeAll,
 } from "../worker/scrape-core.mjs";
 
@@ -409,6 +410,34 @@ test("parseProductHtml leaves an already-absolute image URL unchanged", () => {
     <script type="application/ld+json">{"@type":"Product","name":"Tote","image":"https://cdn.example.com/bag.jpg","offers":{"@type":"Offer","price":"452.00","priceCurrency":"USD"}}</script>`;
   const p = parseProductHtml(html, "USD", "", { pageUrl: "https://www.example.com/p/tote.html" });
   assert.equal(p.image, "https://cdn.example.com/bag.jpg");
+});
+
+test("scrapeOne skips Firecrawl when a candidate returns a clean 404", async () => {
+  // A guessed locale URL that 404s genuinely doesn't exist; Firecrawl would only render its 404 page.
+  // Skipping the render saves a subrequest + seconds per dead candidate (faster, more budget left).
+  let fcCalls = 0;
+  const fakeFetch = async (url) => {
+    if (String(url).includes("api.firecrawl.dev")) { fcCalls++; return { ok:true, status:200, text:async()=>"", json:async()=>({ data:{ html:"<html>x</html>" } }) }; }
+    return { ok:false, status:404, text:async()=>"", json:async()=>({}) };
+  };
+  const r = await scrapeOne("https://brand.example.com/us/en/p/x-ABC12345.html", "United States", "ABC12345", "FAKEKEY", fakeFetch);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Not found \(404\)/);
+  assert.equal(fcCalls, 0, "Firecrawl must NOT be called for a 404 candidate");
+});
+
+test("scrapeOne still falls back to Firecrawl on a 403 (bot-block)", async () => {
+  // 403 = the page exists but blocks direct fetch; Firecrawl's stealth proxy can get past it.
+  let fcCalls = 0;
+  const html = `<script type="application/ld+json">{"@type":"Product","offers":{"price":"100","priceCurrency":"USD"}}</script><div>ABC12345</div>`;
+  const fakeFetch = async (url) => {
+    if (String(url).includes("api.firecrawl.dev")) { fcCalls++; return { ok:true, status:200, text:async()=>"", json:async()=>({ data:{ html } }) }; }
+    return { ok:false, status:403, text:async()=>"", json:async()=>({}) };
+  };
+  const r = await scrapeOne("https://brand.example.com/us/en/p/x-ABC12345.html", "United States", "ABC12345", "FAKEKEY", fakeFetch);
+  assert.equal(fcCalls, 1, "Firecrawl should still be tried on a 403");
+  assert.equal(r.ok, true);
+  assert.equal(r.price, 100);
 });
 
 test("scrapeAll seeds the input market from discovery HTML when per-country fetches fail", async () => {

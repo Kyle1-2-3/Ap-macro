@@ -751,7 +751,7 @@ async function directGetHtml(targetUrl, fetchImpl = fetch, extraHeaders = null, 
     const res = await fetchImpl(targetUrl, {
       headers,
     });
-    if (!res.ok) return { error: `Direct ${res.status}` };
+    if (!res.ok) return { error: `Direct ${res.status}`, status: res.status };
     const html = await res.text();
     if (!html) return { error: "Direct no HTML" };
     return { html };
@@ -770,6 +770,13 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   if (!direct.error) {
     got = direct;
     viaFetch = "direct";
+  }
+  // A clean 404/410 means this (often speculatively-guessed) URL genuinely doesn't exist — Firecrawl
+  // would only render the site's 404 page. Skip the slow render: saves a subrequest + seconds per
+  // dead candidate, so the budget reaches more real markets and the whole lookup is faster. A 403/401
+  // (bot-block) or 5xx/timeout still falls through to Firecrawl, whose stealth proxy can get past it.
+  if (!got && (direct.status === 404 || direct.status === 410)) {
+    return { ok:false, country, reason:`Not found (${direct.status})`, url:targetUrl };
   }
   if (!got) {
     if (regionLocked && extraHeaders) {
