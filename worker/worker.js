@@ -146,6 +146,10 @@ async function handleScrape(request, env, url) {
   if (GEMINI_KEY) {
     enrich = await geminiEnrich(inputUrl, core.name, homeCurrency, homePrices, GEMINI_KEY) || {};
   }
+  // Deterministic guard against a fabricated comparison: with fewer than 2 confirmed markets there is
+  // nothing to compare, and the model has been seen to invent a "cheapest" market that was never
+  // scraped (Lemaire: only France confirmed, yet the macro claimed "US is the cheapest at $2377.50").
+  if (Object.keys(homePrices).length < 2) enrich.macro_insight = "";
 
   // Proxy the scraped product image so the browser can load it (hotlink-protected origins).
   const rawImg = cleanImageUrl(core.image);
@@ -184,6 +188,7 @@ async function geminiEnrich(inputUrl, productName, homeCurrency, homePrices, gem
   const prompt = [
     `A luxury product was found at: ${inputUrl} (name: "${productName || "unknown"}").`,
     `Its verified retail prices, converted to ${homeCurrency}, by country: ${JSON.stringify(homePrices)}.`,
+    `CRITICAL: the ONLY markets with data are exactly [${Object.keys(homePrices).join(", ") || "none"}]. Never mention, compare, or name as "cheapest" any country not in that list — do not invent prices. If the list has fewer than two markets, the macro_insight must NOT claim a cheapest market or a cross-country comparison.`,
     `VAT/consumption tax per market (tax-INCLUSIVE in the listed price, except the US where sales tax is added at the register): US none, Canada 5% GST + provincial, France 20%, Italy 22%, United Kingdom 20%, Switzerland 8.1%, Japan 10%, South Korea 10%.`,
     `Return ONLY a JSON object:`,
     `{ "brand": "BRAND", "origin": "country the brand/house is based in", "category": "short noun phrase e.g. handbag/watch", "blurb": "one sentence on what it is and how production cost compares to retail", "macro_insight": "ONE accurate sentence (<=35 words) linking THIS result to one AP Macro concept (exchange rates / PPP & law of one price / VAT & tariffs / shopping tourism / origin advantage). Name the cheapest market and the REAL reason, consistent with the VAT figures above. Rules: a market can be cheapest DESPITE high VAT when its pre-tax list price is set low — NEVER claim low or favorable VAT causes a low price unless that market's VAT above is actually among the lowest in the set; the EU is a single market with NO internal tariffs, so do NOT cite EU tariff structures; if the brand's home country ties for cheapest, attribute it to origin advantage (no import duty at the source)." }`,
