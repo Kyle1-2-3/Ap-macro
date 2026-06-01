@@ -745,7 +745,15 @@ async function debrandFromUrl(imageUrl){
       body: JSON.stringify({ image: base64, mimeType: "image/jpeg" })
     });
     const d = await res.json();
-    return d.success ? `data:${d.mimeType};base64,${d.image}` : null;
+    if(!d.success || !d.image) return null;
+    const out = `data:${d.mimeType || "image/png"};base64,${d.image}`;
+    try {
+      await loadImage(out);
+      return out;
+    } catch(e) {
+      console.warn("debrand returned invalid image:", e);
+      return null;
+    }
   } catch(e) {
     console.warn("debrand failed:", e);
     return null;
