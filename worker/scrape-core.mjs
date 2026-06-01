@@ -573,12 +573,10 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   const wantCur = CURRENCY_OF[country];
   let got = null;
   let viaFetch = "firecrawl";
-  if (structuredOnly && isDemandwareControllerUrl(targetUrl)) {
-    const direct = await directGetHtml(targetUrl, fetchImpl);
-    if (!direct.error) {
-      got = direct;
-      viaFetch = "direct";
-    }
+  const direct = await directGetHtml(targetUrl, fetchImpl);
+  if (!direct.error) {
+    got = direct;
+    viaFetch = "direct";
   }
   got ||= await fcGetHtml(targetUrl, country, fcKey, fetchImpl);
   if (got.error) return { ok:false, country, reason:got.error, url:targetUrl };
@@ -688,7 +686,8 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   if (fcKey) {
     try {
       const inCountry = inputCountryOf(inputUrl) || "United States";
-      const got = await fcGetHtml(inputUrl, inCountry, fcKey, fetchImpl);
+      const direct = await directGetHtml(inputUrl, fetchImpl);
+      const got = direct.html ? direct : await fcGetHtml(inputUrl, inCountry, fcKey, fetchImpl);
       if (got.html) {
         const hl = parseHreflang(got.html);
         const cc2c = ccToCountry();
