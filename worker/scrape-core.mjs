@@ -440,6 +440,14 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
       if (t && t.length <= 120) out.name = t;
     }
   }
+
+  // Resolve a relative image URL against the page it came from. Demandware sites (e.g. Off-White)
+  // expose the product image in JSON-LD as a root-relative path (/on/demandware.static/...) with no
+  // og:image; left relative it can't be proxied (cleanImageUrl drops it) so the photo never renders.
+  // No-op for already-absolute URLs and when no pageUrl is supplied (e.g. unit tests).
+  if (out.image && opts.pageUrl) {
+    try { out.image = new URL(out.image, opts.pageUrl).toString(); } catch { /* keep as-is */ }
+  }
   return out;
 }
 
@@ -721,7 +729,7 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
   const html = got.html;
   if (code && !htmlHasCode(html, code)) return { ok:false, country, reason:"Product code not on page", url:targetUrl };
 
-  const parsed = parseProductHtml(html, wantCur, code, { structuredOnly });
+  const parsed = parseProductHtml(html, wantCur, code, { structuredOnly, pageUrl: targetUrl });
   if (!parsed.price) {
     return regionLocked && extraHeaders
       ? { ok:false, country, reason:"Region-gated storefront not localized: No price found", url:targetUrl }
@@ -880,7 +888,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
           const wantCur = CURRENCY_OF[country];
           const unique = COUNTRIES.filter((c) => CURRENCY_OF[c] === wantCur).length === 1;
           if (!unique && country !== inCRaw) continue;
-          const p = parseProductHtml(got.html, wantCur, code, {});
+          const p = parseProductHtml(got.html, wantCur, code, { pageUrl: inputUrl });
           if (p.price && p.currency === wantCur) {
             const usd = p.price * (USD_PER[wantCur] || 1);
             if (usd >= 20 && usd <= 1_000_000) seeded[country] = { price: p.price, currency: wantCur, image: p.image, name: p.name };

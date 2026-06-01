@@ -348,6 +348,24 @@ test("parseProductHtml uses the struck original on a markdown in a no-decimal cu
   assert.equal(p.currency, "KRW");
 });
 
+test("parseProductHtml absolutizes a root-relative JSON-LD image against the page URL", () => {
+  // Off-White (Demandware) exposes the product image in JSON-LD as a root-relative path and has no
+  // og:image. Without a base URL it can't be proxied (cleanImageUrl drops a relative string), so the
+  // photo silently fails to render. parseProductHtml must resolve it against the page it came from.
+  const html = `
+    <script type="application/ld+json">{"@type":"Product","name":"3D Spray Arrow Skate Hoodie","image":["/on/demandware.static/-/Sites-51/default/dwe43e4642/images/zoom/44MBB085S26F00G_001_0.jpg"],"offers":{"@type":"Offer","price":"452.00","priceCurrency":"USD"}}</script>`;
+  const pageUrl = "https://www.off---white.com/en-ca/men/clothing/sweatshirts/3d-spray-arrow-skate-hoodie-44MBB085S26F00G001.html";
+  const p = parseProductHtml(html, "USD", "", { pageUrl });
+  assert.equal(p.image, "https://www.off---white.com/on/demandware.static/-/Sites-51/default/dwe43e4642/images/zoom/44MBB085S26F00G_001_0.jpg");
+});
+
+test("parseProductHtml leaves an already-absolute image URL unchanged", () => {
+  const html = `
+    <script type="application/ld+json">{"@type":"Product","name":"Tote","image":"https://cdn.example.com/bag.jpg","offers":{"@type":"Offer","price":"452.00","priceCurrency":"USD"}}</script>`;
+  const p = parseProductHtml(html, "USD", "", { pageUrl: "https://www.example.com/p/tote.html" });
+  assert.equal(p.image, "https://cdn.example.com/bag.jpg");
+});
+
 test("scrapeAll seeds the input market from discovery HTML when per-country fetches fail", async () => {
   // Single-region site (Korea-only Cafe24): only the discovery fetch succeeds; every per-country
   // candidate 404s and the subrequest budget trips. The input market's price must still come back.
