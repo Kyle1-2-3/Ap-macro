@@ -359,6 +359,16 @@ test("parseProductHtml absolutizes a root-relative JSON-LD image against the pag
   assert.equal(p.image, "https://www.off---white.com/on/demandware.static/-/Sites-51/default/dwe43e4642/images/zoom/44MBB085S26F00G_001_0.jpg");
 });
 
+test("parseProductHtml extracts the URL from a JSON-LD ImageObject (not [object Object])", () => {
+  // Louis Vuitton's JSON-LD image is an ImageObject (or array of them), not a string. Coercing the
+  // object to a string yields "[object Object]"; resolving that against the page URL produced a
+  // broken image link (.../products/.../[object Object]). Pull the object's url instead.
+  const html = `
+    <script type="application/ld+json">{"@type":"Product","name":"Victorine Wallet","image":[{"@type":"ImageObject","url":"https://us.louisvuitton.com/images/victorine.jpg"}],"offers":{"@type":"Offer","price":"995","priceCurrency":"USD"}}</script>`;
+  const p = parseProductHtml(html, "USD", "", { pageUrl: "https://ca.louisvuitton.com/eng-ca/products/x/M29413" });
+  assert.equal(p.image, "https://us.louisvuitton.com/images/victorine.jpg");
+});
+
 test("parseProductHtml leaves an already-absolute image URL unchanged", () => {
   const html = `
     <script type="application/ld+json">{"@type":"Product","name":"Tote","image":"https://cdn.example.com/bag.jpg","offers":{"@type":"Offer","price":"452.00","priceCurrency":"USD"}}</script>`;

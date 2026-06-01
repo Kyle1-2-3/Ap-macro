@@ -289,6 +289,17 @@ export function buildCountryUrls(inputUrl) {
   return out;
 }
 
+// A JSON-LD / state `image` may be a string, an array, or an ImageObject ({url|contentUrl}). Return
+// the first usable URL string, or null — never an object (coercing one to a string, e.g. via new URL,
+// yields "[object Object]" and a broken image link, as seen on Louis Vuitton).
+function imageUrlFrom(img) {
+  if (!img) return null;
+  if (typeof img === "string") return img;
+  if (Array.isArray(img)) { for (const x of img) { const u = imageUrlFrom(x); if (u) return u; } return null; }
+  if (typeof img === "object") return imageUrlFrom(img.url || img.contentUrl || img["@id"] || null);
+  return null;
+}
+
 // Extract price + currency + image + name from raw HTML. Three layers, in order:
 //   1) JSON-LD Product offers   2) <meta product:price:*>   3) embedded JS "price"/"priceCurrency"
 // In layer 3, prefer the pair whose currency matches `wantCur` (skips recommended-product noise
@@ -311,7 +322,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     for (const node of arr) {
       if (!node || !String(node["@type"]||"").toLowerCase().includes("product")) continue;
       if (!out.name && node.name) out.name = String(node.name);
-      if (!out.image && node.image) out.image = Array.isArray(node.image) ? node.image[0] : node.image;
+      if (!out.image && node.image) out.image = imageUrlFrom(node.image);
       const offers = Array.isArray(node.offers) ? node.offers[0] : node.offers;
       if (offers) {
         const p = normPrice(offers.price ?? offers.lowPrice ?? offers.highPrice);
@@ -355,7 +366,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // error; currency must equal wantCur, so a wrong-market value can never leak through.
   if (out.price == null && wantCur && !opts.structuredOnly) {
     const st = extractFromState(html, wantCur);
-    if (st) { out.price = st.price; out.currency = st.currency; if (!out.image && st.image) out.image = st.image; }
+    if (st) { out.price = st.price; out.currency = st.currency; if (!out.image && st.image) out.image = imageUrlFrom(st.image); }
   }
 
   // Layer 3.75: commerce-platform price markup. Salesforce Commerce Cloud/Demandware often
@@ -459,7 +470,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // expose the product image in JSON-LD as a root-relative path (/on/demandware.static/...) with no
   // og:image; left relative it can't be proxied (cleanImageUrl drops it) so the photo never renders.
   // No-op for already-absolute URLs and when no pageUrl is supplied (e.g. unit tests).
-  if (out.image && opts.pageUrl) {
+  if (out.image && typeof out.image === "string" && opts.pageUrl) {
     try { out.image = new URL(out.image, opts.pageUrl).toString(); } catch { /* keep as-is */ }
   }
   return out;
