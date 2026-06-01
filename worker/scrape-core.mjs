@@ -252,6 +252,13 @@ export function buildCountryUrls(inputUrl) {
     for (const c of COUNTRIES) out[c] = LOCALE_VARIANTS[c].map(([cc,lang]) => `${u.origin}/${cc}/${lang}${rest}`);
     return out;
   }
+  if (segs.length >= 2 && isCC(segs[0]) && /^[a-z]{2}_[a-z]{2}$/i.test(segs[1])) {  // /{CC}/{lang_CC}/rest (Levi: /CA/en_CA/)
+    // Country code + lang_COUNTRY locale. Use the platform's real lang_COUNTRY codes (DW_LOCALE) so
+    // candidates are correct (/US/en_US/, /CA/fr_CA/, /FR/fr_FR/…) instead of the ~47-guess explosion.
+    const rest = "/" + segs.slice(2).join("/");
+    for (const c of COUNTRIES) out[c] = (DW_LOCALE[c] || []).map(loc => `${u.origin}/${COUNTRY_ISO[c]}/${loc}${rest}`);
+    return out;
+  }
   if (segs.length >= 1 && isCombo(segs[0])) {                          // /{cc}-{lang}/ or /{lang}-{cc}/
     const rest = "/" + segs.slice(1).join("/");
     const sep = segs[0].includes("_") ? "_" : "-";

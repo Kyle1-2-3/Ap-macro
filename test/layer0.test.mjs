@@ -10,6 +10,7 @@ import {
   applyDemandwareTargets,
   extractCode,
   parseProductHtml,
+  buildCountryUrls,
   scrapeCountry,
   scrapeOne,
   scrapeAll,
@@ -410,6 +411,18 @@ test("parseProductHtml leaves an already-absolute image URL unchanged", () => {
     <script type="application/ld+json">{"@type":"Product","name":"Tote","image":"https://cdn.example.com/bag.jpg","offers":{"@type":"Offer","price":"452.00","priceCurrency":"USD"}}</script>`;
   const p = parseProductHtml(html, "USD", "", { pageUrl: "https://www.example.com/p/tote.html" });
   assert.equal(p.image, "https://cdn.example.com/bag.jpg");
+});
+
+test("buildCountryUrls handles the /CC/lang_CC/ locale pattern (Levi)", () => {
+  // Levi uses /CA/en_CA/.../p/<code>. Previously this fell through to the ~47-candidate locale-less
+  // explosion (segs[1]="en_CA" isn't a 2-letter code); now it maps to correct per-country URLs.
+  const out = buildCountryUrls("https://www.levi.com/CA/en_CA/clothing/men/jeans/straight/x/p/005141711");
+  assert.ok(out["United States"].some(u => u.includes("/US/en_US/clothing/men/jeans/straight/x/p/005141711")), "US → /US/en_US/");
+  assert.ok(out["Canada"].some(u => u.includes("/CA/en_CA/")), "CA en");
+  assert.ok(out["Canada"].some(u => u.includes("/CA/fr_CA/")), "CA fr");
+  assert.ok(out["France"].some(u => u.includes("/FR/fr_FR/")), "FR");
+  const total = Object.values(out).reduce((n, a) => n + a.length, 0);
+  assert.ok(total <= 16, `expected ≤16 targeted candidates (not the ~47 explosion), got ${total}`);
 });
 
 test("scrapeOne skips Firecrawl when a candidate returns a clean 404", async () => {
