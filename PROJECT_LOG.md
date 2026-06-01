@@ -65,6 +65,13 @@ _(Rewrite in your own words — graded.)_ It has the most "wow" for a Demo Day (
 
 ## Phase 4 — DELIVER (May 27 – June 4)
 
+### Class log
+**2026-05-31 (data-integrity pass) —** Re-architected how the tool sources prices: accuracy over coverage.
+- **Official-source-only extraction (headline change).** The tool no longer infers prices from page text. It now reads each retailer's official structured price feed as the single source of truth, and reports nothing rather than guessing when that data is absent — eliminating false positives where the most frequent on-page number belonged to another product.
+- **Platform-aware extraction (Demandware).** Many luxury brands share one e-commerce platform; added logic to query its price controller directly. Impact: Rimowa 5/8 correct (2 fabricated) → **8/8 correct**.
+- **Per-brand fixes + honest UI:** Versace, Balenciaga, and ISO currency-suffix parsing; unconfirmed prices now labeled **"unavailable"** instead of fabricated; region-locked storefronts flagged, not estimated.
+- **Macro relevance:** all of this protects the core demo — comparing the *same* good's verified price across countries (open-economy / law of one price).
+
 ### Deliverable checklist
 - [x] Project Log kept updated (this file)
 - [x] Live app link working: https://kyle1-2-3.github.io/Ap-macro/
