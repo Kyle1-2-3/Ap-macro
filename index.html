@@ -826,7 +826,9 @@ function renderStage(){
       ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.debrandedImg)}" alt="logo removed"><div class="obj-cap" style="display:block">${t('capAIremoved')}</div></div>`
       : (it.debrandPending && it.img
         ? `<div style="text-align:center"><div style="position:relative;display:inline-block;line-height:0"><img class="obj-img revealed" style="max-width:min(280px,42vw);filter:brightness(.5)" src="${esc(it.img)}" alt="logo removed pending" onerror="this.parentElement.parentElement.style.display='none'"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 12px"><span style="color:#fff;font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;text-align:center;text-shadow:0 1px 8px rgba(0,0,0,.7)">${t('aiRemoving')}<span class="dots"></span></span></div></div><div class="obj-cap" style="display:block">${t('capLogoRemoved')}</div></div>`
-        : "");
+        : (it.img
+          ? `<div style="text-align:center"><img class="obj-img revealed" style="max-width:min(280px,42vw)" src="${esc(it.img)}" alt="logo removed" onerror="this.parentElement.style.display='none'"><div class="obj-cap" style="display:block">${t('capAIremoved')}</div></div>`
+          : ""));
     imgHtml = `<div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px">${original}${after}</div>`;
   } else if(it.debrandedImg){
     imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img" src="${esc(it.debrandedImg)}" alt="${esc(it.category)}"></div><div class="obj-cap">${t('capLogoByAI')}</div></div>`;
