@@ -298,3 +298,23 @@ test("parseProductHtml prefers the rendered sales price over a struck list price
   assert.equal(p.price, 2580);
   assert.equal(p.currency, "USD");
 });
+
+test("parseProductHtml uses the regular price, not the sale price, on a Shopify markdown", () => {
+  // Shopify (e.g. Fear of God): JSON-LD carries the live SALE price, the variant JSON carries the
+  // original as compare_at_price. The comparison tool compares on the regular (pre-sale) price.
+  const html = `
+    <script type="application/ld+json">{"@type":"Product","name":"Classic Fleece Hoodie","offers":{"@type":"Offer","price":"75.00","priceCurrency":"USD"}}</script>
+    <script>var __st = {"variants":[{"id":42631100923965,"price":7500,"compare_at_price":15000,"available":true}]};</script>`;
+  const p = parseProductHtml(html, "USD", "");
+  assert.equal(p.price, 150);
+  assert.equal(p.currency, "USD");
+});
+
+test("parseProductHtml keeps the current price when there is no Shopify markdown", () => {
+  const html = `
+    <script type="application/ld+json">{"@type":"Product","offers":{"@type":"Offer","price":"75.00","priceCurrency":"USD"}}</script>
+    <script>var __st = {"variants":[{"id":1,"price":7500,"compare_at_price":null}]};</script>`;
+  const p = parseProductHtml(html, "USD", "");
+  assert.equal(p.price, 75);
+  assert.equal(p.currency, "USD");
+});

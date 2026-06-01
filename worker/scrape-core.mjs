@@ -395,6 +395,14 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     if (re && re.test(html)) out.currency = wantCur;
   }
 
+  // Sale → use the regular (pre-sale) price so a temporary markdown in one market doesn't fake a
+  // structural "cheapest" result in the cross-country comparison. Shopify carries the original as
+  // compare_at_price; no-op for non-sale pages and non-Shopify platforms (returns null).
+  if (out.price != null) {
+    const regular = extractShopifyRegularPrice(html, out.price);
+    if (regular) out.price = regular;
+  }
+
   // Image — try og:image first; if absent (e.g. Bottega has no OG/JSON-LD), fall back to an
   // <img>/srcset URL whose filename contains the product code (so it's THIS product, not a
   // recommended item). codeNeedles() gives the meaningful code tokens.
@@ -498,6 +506,25 @@ function extractRenderedSalesPrice(html, wantCur) {
   }
   hits.sort((a, b) => a.rank - b.rank || a.pos - b.pos);
   return hits[0]?.price || null;
+}
+
+// Sale handling for a cross-country COMPARISON tool: prefer the REGULAR (pre-sale) price so a
+// temporary markdown in one market doesn't fake a structural "cheapest" result. Shopify exposes
+// the original as compare_at_price (in the same minor-unit scale as price) inside the variant that
+// carries the current price. We locate that variant by its price-in-cents, then scale the current
+// price up by the compare_at/price ratio (scale-safe across currencies). Returns the regular price
+// only when it's a genuine markdown (compare_at > price); otherwise null → caller keeps current.
+export function extractShopifyRegularPrice(html, currentPrice) {
+  if (!html || !currentPrice) return null;
+  const cents = Math.round(currentPrice * 100);
+  const re = new RegExp(`"price":\\s*${cents}\\b[^{}]*?"compare_at_price":\\s*(\\d+)`, "i");
+  const reRev = new RegExp(`"compare_at_price":\\s*(\\d+)[^{}]*?"price":\\s*${cents}\\b`, "i");
+  const m = html.match(re) || html.match(reRev);
+  if (!m) return null;
+  const compareCents = parseInt(m[1], 10);
+  if (!(compareCents > cents)) return null;          // compare_at <= price → not on sale
+  if (compareCents > cents * 20) return null;        // implausible ratio → ignore (safety)
+  return currentPrice * (compareCents / cents);      // regular = current × markup ratio
 }
 
 // Return the brace-balanced JSON object literal starting at/after fromIdx (string-aware), or null.
