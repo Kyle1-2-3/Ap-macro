@@ -369,6 +369,30 @@ test("parseProductHtml extracts the URL from a JSON-LD ImageObject (not [object 
   assert.equal(p.image, "https://us.louisvuitton.com/images/victorine.jpg");
 });
 
+test("parseProductHtml rejects non-product images (Ralph Lauren social/monogram assets) → blank, not wrong", () => {
+  // RL's og:image is a generic social-share card and its only CDN images are monogramming/embroidery
+  // swatches under /Library-Sites- (the real polo photo is JS-lazy-loaded, absent from the HTML). An
+  // honest blank beats showing a broken swatch labelled as the product.
+  const html = `
+    <meta property="og:image" content="https://www.ralphlauren.ca/on/demandware.static/-/Library-Sites-RalphLauren_NA_Library/default/x/images/social-sharing/RLNA-Social-Image.jpg">
+    <img src="https://www.ralphlauren.ca/on/demandware.static/-/Library-Sites-RalphLauren_NA_Library/default/y/images/monogramming/embroiderycolor/C1730.jpg">
+    <img src="https://www.ralphlauren.ca/on/demandware.static/Sites-RalphLauren_CA-Site/-/default/dwc1c84b9b/images/cyo-redesign.png">
+    <script type="application/ld+json">{"@type":"Product","name":"The Iconic Mesh Polo","offers":{"@type":"Offer","price":"125","priceCurrency":"USD"}}</script>`;
+  const p = parseProductHtml(html, "USD", "401480", { pageUrl: "https://www.ralphlauren.ca/men-clothing/x/401480-P.html" });
+  assert.equal(p.price, 125);
+  assert.equal(p.image, null);
+});
+
+test("parseProductHtml still takes a SKU-filename CDN image as last resort (Balenciaga case)", () => {
+  // No og:image, no JSON-LD image, and the URL code (813472606) differs from the image code — but the
+  // image filename is clearly a product SKU, so it should still be used.
+  const html = `
+    <img src="https://media.balenciaga.com/dam/images/7897792AA4V1000_F.jpg">
+    <script type="application/ld+json">{"@type":"Product","name":"Bag","offers":{"@type":"Offer","price":"1450","priceCurrency":"USD"}}</script>`;
+  const p = parseProductHtml(html, "USD", "813472606", { pageUrl: "https://www.balenciaga.com/en-us/x-813472606.html" });
+  assert.equal(p.image, "https://media.balenciaga.com/dam/images/7897792AA4V1000_F.jpg");
+});
+
 test("parseProductHtml leaves an already-absolute image URL unchanged", () => {
   const html = `
     <script type="application/ld+json">{"@type":"Product","name":"Tote","image":"https://cdn.example.com/bag.jpg","offers":{"@type":"Offer","price":"452.00","priceCurrency":"USD"}}</script>`;

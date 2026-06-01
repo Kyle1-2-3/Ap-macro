@@ -300,6 +300,11 @@ function imageUrlFrom(img) {
   return null;
 }
 
+// URLs that are never the product photo: brand chrome + marketing/library assets. Used to reject a
+// bad og:image (e.g. Ralph Lauren's social-share card) and to filter the last-resort CDN image (e.g.
+// RL monogramming/embroidery swatches under /Library-Sites-). An honest blank beats a wrong image.
+const NON_PRODUCT_IMG = /(logo|icon|sprite|swatch|favicon|placeholder|flag|badge|monogram|embroider|social[-_]?shar|country[-_]?selector|library-sites|loader|spinner|size-?chart|gift-?card|banner)/i;
+
 // Extract price + currency + image + name from raw HTML. Three layers, in order:
 //   1) JSON-LD Product offers   2) <meta product:price:*>   3) embedded JS "price"/"priceCurrency"
 // In layer 3, prefer the pair whose currency matches `wantCur` (skips recommended-product noise
@@ -433,7 +438,7 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // recommended item). codeNeedles() gives the meaningful code tokens.
   if (!out.image) {
     const og = html.match(/<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["']/i);
-    if (og) out.image = og[1];
+    if (og && !NON_PRODUCT_IMG.test(og[1])) out.image = og[1];
   }
   if (!out.image && code) {
     const needles = codeNeedles(code).map(n => n.toLowerCase());
@@ -449,9 +454,20 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
   // logos, sprites, swatches and tiny thumbnails. It's still an image from THIS product page.
   if (!out.image) {
     const urls = [...new Set(html.match(/https?:\/\/[^"'\s)]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s)]*)?/gi) || [])];
+    // Only trust a last-resort image that LOOKS like a product asset: a SKU-ish filename (a 5+ char
+    // token containing a digit, like Balenciaga's 7897792AA4V1000.jpg) or a /product(s)/ path. This
+    // rejects marketing/UI assets a brand puts on the page (e.g. Ralph Lauren's cyo-redesign.png,
+    // monogram swatches) — better an honest blank than a confident wrong image.
+    const looksProduct = (u) => {
+      try {
+        const seg = (new URL(u).pathname.split("/").pop() || "");
+        return /\/products?\//i.test(u) || (/[A-Za-z0-9]{5,}/.test(seg) && /\d/.test(seg));
+      } catch { return false; }
+    };
     const cdn = urls.filter(u => /\b(dam|asset|assets|media|cdn|images?|scene7)\b/i.test(u)
-      && !/(logo|icon|sprite|swatch|favicon|placeholder|flag|badge)/i.test(u)
-      && !/(thumbnail|thumb|small|mini|micro|\b\d{2,3}x\d{2,3}\b)/i.test(u));
+      && !NON_PRODUCT_IMG.test(u)
+      && !/(thumbnail|thumb|small|mini|micro|\b\d{2,3}x\d{2,3}\b)/i.test(u)
+      && looksProduct(u));
     // Prefer an explicitly large rendition if present, else the first qualifying CDN image.
     const big = cdn.find(u => /\b(large|zoom|original|2048|1600|1200|hero|medium)\b/i.test(u));
     if (big || cdn[0]) out.image = big || cdn[0];
