@@ -679,7 +679,6 @@ function inputCountryOf(inputUrl) {
 export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = null) {
   const code = extractCode(inputUrl);
   const targets = buildCountryUrls(inputUrl);  // may be {} when the URL has no locale segment
-  let isDemandware = false;  // set true once we detect the platform, to suppress text-guessing
 
   // Discovery: read hreflang off the input page → authoritative per-country product URLs straight
   // from the site (no guessing). This is also the ONLY discovery path for locale-less URLs like
@@ -703,7 +702,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
         // URLs (which carry clean JSON-LD) ahead of the consumer-PDP candidates. The same
         // currency + sanity + outlier gates still apply, so a bad controller read can only fail.
         const dw = detectDemandware(got.html, inputUrl);
-        if (dw) { applyDemandwareTargets(targets, dw, code); isDemandware = true; }
+        if (dw) applyDemandwareTargets(targets, dw, code);
       }
     } catch { /* keep whatever candidates we have */ }
   }
@@ -719,7 +718,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   // instead of ~200s serial) — critical for Rimowa-class pages where most countries use vision.
   const settled = await mapLimit(
     COUNTRIES, 8,
-    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, isDemandware)
+    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, false)
   );
   const prices = {}, failed = [];
   let image = null, name = null;
