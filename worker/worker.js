@@ -7,7 +7,7 @@
      GET  /img?url=  → image proxy (bypasses origin hotlink protection)
    ========================================================================== */
 
-import { scrapeAll, parseProductHtml } from "./scrape-core.mjs";
+import { scrapeAll, resolveProductImage } from "./scrape-core.mjs";
 
 const VALID_CURRENCIES = ["USD","CAD","EUR","GBP","CHF","JPY","KRW"];
 // Fallback only — value of 1 unit in USD — used if the live FX API is unreachable.
@@ -118,7 +118,7 @@ async function handleScrape(request, env, url) {
   // result still passes scrape-core's currency + sanity gate, so it can't introduce a bad price.
   const GEMINI_KEY_V = env.GEMINI_API_KEY || "";
   const visionFn = GEMINI_KEY_V
-    ? (u, country, wantCur) => visionExtractPrice(u, country, wantCur, FIRECRAWL_KEY, GEMINI_KEY_V)
+    ? (u, country, wantCur, code) => visionExtractPrice(u, country, wantCur, FIRECRAWL_KEY, GEMINI_KEY_V, code)
     : null;
   const fxPromise = getUsdRates();
   const core = await scrapeAll(inputUrl, FIRECRAWL_KEY, fetch, visionFn);
@@ -210,7 +210,7 @@ async function geminiEnrich(inputUrl, productName, homeCurrency, homePrices, gem
 // Vision fallback: screenshot the product page (closing locale modals) and read price+currency
 // off the image with Gemini vision. Returns {price, currency, name, image} or null. The caller
 // (scrape-core) re-checks currency + sanity, so a misread can only fail, never inject a bad price.
-async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey) {
+async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey, code = "") {
   // 1. screenshot + rendered html via Firecrawl (rendered + stealth; Escape dismisses geo/locale modals).
   // We also pull `html` so we can extract a product image — text-blocked brands (e.g. Zara) come via
   // vision for ALL markets, and without this they'd show no image at all (vision reads only the price).
@@ -272,10 +272,10 @@ async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey) {
     const text = (gd?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
     const parsed = extractJson(text);
     if (parsed && typeof parsed.price === "number" && parsed.price > 0) {
-      // Reuse the full image-extraction logic on the rendered html (image only — the price comes from
-      // the screenshot). Gives vision-path products a photo instead of a blank slot.
+      // Pull a product image from the rendered html (the price comes from the screenshot). Gives
+      // vision-path products a photo instead of a blank slot; passes the real code for a stronger match.
       let image = null;
-      if (renderedHtml) { try { image = parseProductHtml(renderedHtml, wantCur, "", { pageUrl: url }).image || null; } catch { /* image best-effort */ } }
+      if (renderedHtml) { try { image = resolveProductImage(renderedHtml, code, url, null); } catch { /* image best-effort */ } }
       return { price: parsed.price, currency: parsed.currency || wantCur, name: parsed.name || null, image };
     }
     return null;

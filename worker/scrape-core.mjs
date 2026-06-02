@@ -312,6 +312,69 @@ function imageUrlFrom(img) {
 // RL monogramming/embroidery swatches under /Library-Sites-). An honest blank beats a wrong image.
 const NON_PRODUCT_IMG = /(logo|icon|sprite|swatch|favicon|placeholder|flag|badge|monogram|embroider|social[-_]?shar|country[-_]?selector|library-sites|loader|spinner|size-?chart|gift-?card|banner)/i;
 
+// Resolve the product photo from a page. Tries, in order: a structured `seed` (the JSON-LD/state
+// image parseProductHtml already found) → og:image → a code-bearing URL (with a file extension, or
+// extensionless on a known image CDN like Amplience) → a last-resort product-looking CDN image.
+// Filters out non-product assets, then absolutizes a relative URL against pageUrl. Returns a URL
+// string or null. Shared by parseProductHtml and the worker's vision fallback (so the image logic
+// lives in one place, and vision can pass the real product code for a stronger match).
+export function resolveProductImage(html, code, pageUrl, seed) {
+  if (!html) return (typeof seed === "string" && seed) ? seed : null;
+  let img = (typeof seed === "string" && seed) ? seed : null;
+
+  if (!img) {
+    const og = html.match(/<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+    if (og && !NON_PRODUCT_IMG.test(og[1])) img = og[1];
+  }
+
+  // The jpg/png URL list is scanned ONCE and reused by both the code-match and last-resort blocks.
+  const extUrls = html.match(/https?:\/\/[^"'\s)]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s)]*)?/gi) || [];
+
+  // Prefer an <img>/srcset URL whose filename contains the product code (so it's THIS product, not a
+  // recommended item). codeNeedles() gives the meaningful code tokens.
+  if (!img && code) {
+    const needles = codeNeedles(code).map(n => n.toLowerCase());
+    if (needles.length) {
+      img = extUrls.find(u => needles.some(n => u.toLowerCase().includes(n))) || null;
+      // Some brands serve images from an EXTENSIONLESS CDN (e.g. Tom Ford via Amplience:
+      // cdn.media.amplience.net/i/tom_ford/FT1362_01A_53MM_A), exposed only in JS state. Also accept a
+      // code-bearing URL on a known image CDN/path even without a file extension.
+      if (!img) {
+        const looseUrls = html.match(/https?:\/\/[^"'\s)<>]+/gi) || [];
+        img = looseUrls.find(u =>
+          /(amplience|scene7|cloudinary|imgix|contentful|akamaized|\/i\/|\/image\/|\/images?\/|demandware\.static|\bdam\b)/i.test(u)
+          && needles.some(n => u.toLowerCase().includes(n))
+          && !NON_PRODUCT_IMG.test(u)) || null;
+      }
+    }
+  }
+
+  // Last resort: some sites use a different code in the URL than in the image filename (e.g.
+  // Balenciaga URL code 813472606 but image code 7897792AA4V1000). Take a product-LOOKING CDN image —
+  // SKU-ish filename (5+ chars incl. a digit) or a /product(s)/ path — skipping marketing assets and
+  // tiny thumbnails, so a brand's UI chrome (RL's cyo-redesign.png, swatches) isn't mistaken for it.
+  if (!img) {
+    const looksProduct = (u) => {
+      try {
+        const seg = (new URL(u).pathname.split("/").pop() || "");
+        return /\/products?\//i.test(u) || (/[A-Za-z0-9]{5,}/.test(seg) && /\d/.test(seg));
+      } catch { return false; }
+    };
+    const cdn = [...new Set(extUrls)].filter(u => /\b(dam|asset|assets|media|cdn|images?|scene7)\b/i.test(u)
+      && !NON_PRODUCT_IMG.test(u)
+      && !/(thumbnail|thumb|small|mini|micro|\b\d{2,3}x\d{2,3}\b)/i.test(u)
+      && looksProduct(u));
+    img = cdn.find(u => /\b(large|zoom|original|2048|1600|1200|hero|medium)\b/i.test(u)) || cdn[0] || null;
+  }
+
+  // Absolutize a relative URL against the page it came from (Demandware /on/demandware.static/… has
+  // no host); left relative it can't be proxied. No-op for absolute URLs / when no pageUrl is given.
+  if (img && pageUrl) {
+    try { img = new URL(img, pageUrl).toString(); } catch { /* keep as-is */ }
+  }
+  return img || null;
+}
+
 // Extract price + currency + image + name from raw HTML. Three layers, in order:
 //   1) JSON-LD Product offers   2) <meta product:price:*>   3) embedded JS "price"/"priceCurrency"
 // In layer 3, prefer the pair whose currency matches `wantCur` (skips recommended-product noise
@@ -466,56 +529,9 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
     if (regular) out.price = regular;
   }
 
-  // Image — try og:image first; if absent (e.g. Bottega has no OG/JSON-LD), fall back to an
-  // <img>/srcset URL whose filename contains the product code (so it's THIS product, not a
-  // recommended item). codeNeedles() gives the meaningful code tokens.
-  if (!out.image) {
-    const og = html.match(/<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["']/i);
-    if (og && !NON_PRODUCT_IMG.test(og[1])) out.image = og[1];
-  }
-  if (!out.image && code) {
-    const needles = codeNeedles(code).map(n => n.toLowerCase());
-    if (needles.length) {
-      const urls = html.match(/https?:\/\/[^"'\s)]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s)]*)?/gi) || [];
-      let hit = urls.find(u => needles.some(n => u.toLowerCase().includes(n)));
-      // Some brands serve images from an EXTENSIONLESS CDN (e.g. Tom Ford via Amplience:
-      // cdn.media.amplience.net/i/tom_ford/FT1362_01A_53MM_A) and expose them only in JS state, so
-      // the .jpg/.png-only regex above misses them. Also accept a code-bearing URL on a known image
-      // CDN/path even without a file extension. The product code in the URL keeps it specific.
-      if (!hit) {
-        const looseUrls = html.match(/https?:\/\/[^"'\s)<>]+/gi) || [];
-        hit = looseUrls.find(u =>
-          /(amplience|scene7|cloudinary|imgix|contentful|akamaized|\/i\/|\/image\/|\/images?\/|demandware\.static|\bdam\b)/i.test(u)
-          && needles.some(n => u.toLowerCase().includes(n))
-          && !NON_PRODUCT_IMG.test(u));
-      }
-      if (hit) out.image = hit;
-    }
-  }
-  // Last-resort image: some sites use a different code in the URL than in the image filename
-  // (e.g. Balenciaga en-ca URL code 813472606 but image code 7897792AA4V1000). When code-matching
-  // fails, take the largest-looking product image from a media/asset/dam CDN, skipping icons,
-  // logos, sprites, swatches and tiny thumbnails. It's still an image from THIS product page.
-  if (!out.image) {
-    const urls = [...new Set(html.match(/https?:\/\/[^"'\s)]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^"'\s)]*)?/gi) || [])];
-    // Only trust a last-resort image that LOOKS like a product asset: a SKU-ish filename (a 5+ char
-    // token containing a digit, like Balenciaga's 7897792AA4V1000.jpg) or a /product(s)/ path. This
-    // rejects marketing/UI assets a brand puts on the page (e.g. Ralph Lauren's cyo-redesign.png,
-    // monogram swatches) — better an honest blank than a confident wrong image.
-    const looksProduct = (u) => {
-      try {
-        const seg = (new URL(u).pathname.split("/").pop() || "");
-        return /\/products?\//i.test(u) || (/[A-Za-z0-9]{5,}/.test(seg) && /\d/.test(seg));
-      } catch { return false; }
-    };
-    const cdn = urls.filter(u => /\b(dam|asset|assets|media|cdn|images?|scene7)\b/i.test(u)
-      && !NON_PRODUCT_IMG.test(u)
-      && !/(thumbnail|thumb|small|mini|micro|\b\d{2,3}x\d{2,3}\b)/i.test(u)
-      && looksProduct(u));
-    // Prefer an explicitly large rendition if present, else the first qualifying CDN image.
-    const big = cdn.find(u => /\b(large|zoom|original|2048|1600|1200|hero|medium)\b/i.test(u));
-    if (big || cdn[0]) out.image = big || cdn[0];
-  }
+  // Image — resolve from the structured seed (JSON-LD/state) or fall back to og:image / code-matched
+  // / last-resort CDN, then absolutize. See resolveProductImage.
+  out.image = resolveProductImage(html, code, opts.pageUrl, out.image);
 
   // Name — fall back to the first <h1> when structured data didn't supply one.
   if (!out.name) {
@@ -524,14 +540,6 @@ export function parseProductHtml(html, wantCur, code, opts = {}) {
       const t = h1[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
       if (t && t.length <= 120) out.name = t;
     }
-  }
-
-  // Resolve a relative image URL against the page it came from. Demandware sites (e.g. Off-White)
-  // expose the product image in JSON-LD as a root-relative path (/on/demandware.static/...) with no
-  // og:image; left relative it can't be proxied (cleanImageUrl drops it) so the photo never renders.
-  // No-op for already-absolute URLs and when no pageUrl is supplied (e.g. unit tests).
-  if (out.image && typeof out.image === "string" && opts.pageUrl) {
-    try { out.image = new URL(out.image, opts.pageUrl).toString(); } catch { /* keep as-is */ }
   }
   return out;
 }
@@ -848,7 +856,7 @@ export async function scrapeOne(targetUrl, country, code, fcKey, fetchImpl = fet
 // Try each candidate locale URL for a country until one verifies. If ALL text-extraction
 // candidates fail and a visionFn is supplied, fall back to reading a screenshot of the most
 // likely URL (the first candidate). The vision result passes the SAME currency + sanity gate,
-// so a wrong read can only fail, never mislead. visionFn(url, country, wantCur) -> {price,currency}|null
+// so a wrong read can only fail, never mislead. visionFn(url, country, wantCur, code) -> {price,currency,image}|null
 export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchImpl = fetch, visionFn = null, structuredOnly = false, regionGate = null, budget = null) {
   if (!candidateUrls || !candidateUrls.length) return { ok:false, country, reason:"No URL for country" };
   let last = { ok:false, country, reason:"No candidate verified" };
@@ -872,7 +880,7 @@ export async function scrapeCountry(candidateUrls, country, code, fcKey, fetchIm
     if (budget) budget.used += 3;
     const wantCur = CURRENCY_OF[country];
     try {
-      const v = await visionFn(candidateUrls[0], country, wantCur);
+      const v = await visionFn(candidateUrls[0], country, wantCur, code);
       if (v && v.price && normCur(v.currency) === wantCur) {
         const usd = Number(v.price) * (USD_PER[wantCur] || 1);
         if (usd >= 20 && usd <= 1_000_000)
@@ -952,7 +960,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   // hreflang URL still passes code+currency verification — a bad URL can only fail, never mislead.
   if (fcKey) {
     try {
-      const inCountry = inputCountryOf(inputUrl) || "United States";
+      const inCountry = inputCountry || "United States";
       const direct = await directGetHtml(inputUrl, fetchImpl, null, budget);
       const got = direct.html ? direct : await fcGetHtml(inputUrl, inCountry, fcKey, fetchImpl, null, budget);
       if (got.html) {
@@ -976,7 +984,7 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
         // returns its one real price instead of failing entirely. Seed only when the currency
         // maps to a single country (so EUR's France/Italy aren't both filled from one page),
         // unless the URL itself names the country. Same currency + sanity gate as a real scrape.
-        const inCRaw = inputCountryOf(inputUrl);
+        const inCRaw = inputCountry;
         for (const country of COUNTRIES) {
           const wantCur = CURRENCY_OF[country];
           const unique = COUNTRIES.filter((c) => CURRENCY_OF[c] === wantCur).length === 1;
