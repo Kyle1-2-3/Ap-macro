@@ -828,10 +828,12 @@ function renderStage(){
   } else if(it.debrandedImg){
     imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img" src="${esc(it.debrandedImg)}" alt="${esc(it.category)}"></div><div class="obj-cap">${t('capLogoByAI')}</div></div>`;
   } else if(it.img){
-    const pendingNote = it.debrandPending
-      ? `<div class="obj-cap" style="color:var(--gold);margin-bottom:10px;text-transform:none;letter-spacing:.04em;font-style:italic"><em>${t('aiRemoving')}</em></div>`
-      : "";
-    imgHtml = `<div class="object-wrap">${pendingNote}<div class="img-holder"><img class="obj-img soft" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div><div class="obj-cap">${t('capLogoBlurred')}</div></div>`;
+    // While the AI is working, show only "AI is removing the logo…" (no "logo blurred" caption);
+    // the "logo blurred" label is the honest fallback shown only if debrand fails.
+    const caption = it.debrandPending
+      ? `<div class="obj-cap" style="color:var(--gold);text-transform:none;letter-spacing:.04em;font-style:italic"><em>${t('aiRemoving')}</em></div>`
+      : `<div class="obj-cap">${t('capLogoBlurred')}</div>`;
+    imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img soft" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div>${caption}</div>`;
   } else {
     imgHtml = `<div class="object-wrap"><div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">${t('objWithoutLabel')}</div></div></div>`;
   }
