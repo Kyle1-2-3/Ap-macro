@@ -744,6 +744,7 @@ async function doSearch(force){
   $("#stage").innerHTML = `<div class="loading"><em id="loadMsg">${loadMsgs[0]}</em><span class="dots"></span></div>`;
   let msgIdx = 0;
   const loadTimer = setInterval(() => {
+    if(mySeq !== searchSeq){ clearInterval(loadTimer); return; }
     msgIdx = (msgIdx + 1) % loadMsgs.length;
     const el = document.getElementById("loadMsg");
     if(el) el.textContent = loadMsgs[msgIdx];
@@ -901,8 +902,6 @@ function renderResults(){
     // Try local_prices first, then priceData
     const local = (typeof lp[country] === "number") ? lp[country] : (entry && typeof entry.price === "number" ? entry.price : null);
     if(local === null || !isFinite(local) || local <= 0){
-      // If no price data at all, skip (don't show as unavailable unless explicitly marked)
-      if(entry && entry.available === false) unavailableRows.push({ country, cc, isHome, reason: unavailableLabel(country, entry.reason) });
       continue;
     }
 

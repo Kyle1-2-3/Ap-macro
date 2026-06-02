@@ -289,9 +289,17 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/img") return handleImageProxy(url);
-    if (url.pathname === "/debrand" && request.method === "POST") return handleDebrand(request, env);
-    if (url.pathname === "/scrape" && request.method === "POST") return handleScrape(request, env, url);
-
+    if (url.pathname === "/debrand") {
+      if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+      return handleDebrand(request, env);
+    }
+    if (url.pathname === "/scrape") {
+      if (request.method !== "POST") return json({ found: false, error: "Method not allowed" }, 405);
+      return handleScrape(request, env, url);
+    }
+    if (url.pathname === "/" || url.pathname === "/health") {
+      return json({ ok: true, endpoints: ["POST /scrape", "POST /debrand", "GET /img"] }, 200);
+    }
     return json({ found: false, error: "Not found" }, 404);
   },
 };
