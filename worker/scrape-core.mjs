@@ -780,7 +780,7 @@ function isDemandwareControllerUrl(targetUrl) {
   }
 }
 
-async function directGetHtml(targetUrl, fetchImpl = fetch, extraHeaders = null, budget = null) {
+export async function directGetHtml(targetUrl, fetchImpl = fetch, extraHeaders = null, budget = null) {
   if (budget && budget.used >= budget.max) return { error: "Subrequest budget reached" };
   if (budget) budget.used++;
   try {

@@ -752,6 +752,18 @@ async function doSearch(force){
   revealed = false;
   lastRevealAnswer = null;
 
+  // Kick off logo removal IN PARALLEL with the price scrape: the lightweight /image endpoint
+  // returns the product photo after a single page fetch, so debrand runs while prices are still
+  // being gathered (instead of starting only after the full /scrape response carries the image).
+  // {ran} marks whether the parallel image fetch succeeded — so we fall back to the scrape image
+  // only when it didn't, never double-charging Gemini on a genuine debrand miss.
+  const earlyDebrand = fetch(`${WORKER_URL}/image?url=${encodeURIComponent(url)}`)
+    .then(r => r.json())
+    .then(d => (d && d.success && d.image_url)
+      ? debrandFromUrl(d.image_url).then(result => ({ ran: true, result }))
+      : { ran: false })
+    .catch(() => ({ ran: false }));
+
   try {
     const res = await fetch(`${WORKER_URL}/scrape`, {
       method: "POST",
@@ -789,13 +801,15 @@ async function doSearch(force){
 
     if(imageUrl){
       const item = current;   // pin the item so a slower debrand can't clobber a newer search
-      debrandFromUrl(imageUrl).then(result => {
-        if(current !== item) return;   // a newer search replaced this product — drop the stale result
-        current.debrandedImg = result || null;
-        current.debrandPending = false;
-        renderStage();
-        if(revealed) renderResults();
-      });
+      earlyDebrand
+        .then(early => early.ran ? early.result : debrandFromUrl(imageUrl))  // fall back only if the parallel image fetch failed
+        .then(result => {
+          if(current !== item) return;   // a newer search replaced this product — drop the stale result
+          current.debrandedImg = result || null;
+          current.debrandPending = false;
+          renderStage();
+          if(revealed) renderResults();
+        });
     }
   } catch(e) {
     clearInterval(loadTimer);

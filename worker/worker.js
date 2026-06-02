@@ -7,7 +7,7 @@
      GET  /img?url=  → image proxy (bypasses origin hotlink protection)
    ========================================================================== */
 
-import { scrapeAll, resolveProductImage } from "./scrape-core.mjs";
+import { scrapeAll, resolveProductImage, directGetHtml, fcGetHtml, extractCode } from "./scrape-core.mjs";
 
 const VALID_CURRENCIES = ["USD","CAD","EUR","GBP","CHF","JPY","KRW"];
 // Fallback only — value of 1 unit in USD — used if the live FX API is unreachable.
@@ -66,6 +66,35 @@ function preValidateUrl(urlStr) {
     return { valid: false, reason: `Third-party retailer (${domain}) — please use the official brand URL` };
   }
   return { valid: true, domain, parsed };
+}
+
+/* ---------- GET /image handler ----------
+   Lightweight: fetch ONLY the pasted product page and return its proxied og:image.
+   Lets the client kick off /debrand in parallel with the (slower) full price scrape,
+   instead of waiting for the whole /scrape response to carry the image. Separate worker
+   invocation → its own subrequest budget, so it never competes with /scrape's. */
+async function handleImageQuick(request, env, url) {
+  if (!originAllowed(request)) return json({ success: false, error: "Forbidden origin" }, 403);
+  const inputUrl = (url.searchParams.get("url") || "").trim();
+  if (!inputUrl) return json({ success: false, error: "Missing ?url=" }, 400);
+  const pre = preValidateUrl(inputUrl);
+  if (!pre.valid) return json({ success: false, error: pre.reason }, 400);
+  const FIRECRAWL_KEY = env.FIRECRAWL_API_KEY || "";
+  if (!FIRECRAWL_KEY) return json({ success: false, error: "Server missing FIRECRAWL_API_KEY secret" }, 500);
+
+  const budget = { used: 0, max: 8 };
+  let html = "";
+  try {
+    const direct = await directGetHtml(inputUrl, fetch, null, budget);
+    const got = direct.html ? direct : await fcGetHtml(inputUrl, "United States", FIRECRAWL_KEY, fetch, null, budget);
+    html = got.html || "";
+  } catch { /* fall through to no-image */ }
+  if (!html) return json({ success: false, error: "Could not fetch product page" }, 200);
+
+  const rawImg = cleanImageUrl(resolveProductImage(html, extractCode(inputUrl), inputUrl));
+  const proxyImg = rawImg ? `${url.origin}/img?url=${encodeURIComponent(rawImg)}` : "";
+  if (!proxyImg) return json({ success: false, error: "No product image found" }, 200);
+  return json({ success: true, image_url: proxyImg }, 200);
 }
 
 /* ---------- POST /scrape handler ---------- */
@@ -289,6 +318,10 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/img") return handleImageProxy(url);
+    if (url.pathname === "/image") {
+      if (request.method !== "GET") return json({ success: false, error: "Method not allowed" }, 405);
+      return handleImageQuick(request, env, url);
+    }
     if (url.pathname === "/debrand") {
       if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
       return handleDebrand(request, env);
@@ -298,7 +331,7 @@ export default {
       return handleScrape(request, env, url);
     }
     if (url.pathname === "/" || url.pathname === "/health") {
-      return json({ ok: true, endpoints: ["POST /scrape", "POST /debrand", "GET /img"] }, 200);
+      return json({ ok: true, endpoints: ["POST /scrape", "POST /debrand", "GET /image", "GET /img"] }, 200);
     }
     return json({ found: false, error: "Not found" }, 404);
   },
