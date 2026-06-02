@@ -220,11 +220,11 @@ async function visionExtractPrice(url, country, wantCur, fcKey, geminiKey, code 
       method: "POST",
       headers: { Authorization: `Bearer ${fcKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        url, formats: ["screenshot", "html"], proxy: "stealth", timeout: 60000,
+        url, formats: ["screenshot", "html"], proxy: "stealth", timeout: 45000,
         actions: [
-          { type: "wait", milliseconds: 7000 },
+          { type: "wait", milliseconds: 4000 },
           { type: "press", key: "Escape" },
-          { type: "wait", milliseconds: 2000 },
+          { type: "wait", milliseconds: 1500 },
           { type: "screenshot" },
         ],
       }),

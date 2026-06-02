@@ -738,12 +738,12 @@ export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch, ex
     formats: ["html"],
     location: { country: COUNTRY_ISO[country] || "US", languages: [LANG_OF[country] || "en"] },
     proxy: "stealth",
-    waitFor: 4000,
+    waitFor: 2500,
     timeout: 40000,
   };
   if (extraHeaders && Object.keys(extraHeaders).length) req.headers = extraHeaders;
   const reqBody = JSON.stringify(req);
-  let res, delay = 1000;
+  let res, delay = 500;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (budget && budget.used >= budget.max) return { error: "Subrequest budget reached" };
     if (budget) budget.used++;
@@ -1027,7 +1027,11 @@ export async function scrapeAll(inputUrl, fcKey, fetchImpl = fetch, visionFn = n
   // instead of ~200s serial) — critical for Rimowa-class pages where most countries use vision.
   const settled = await mapLimit(
     COUNTRIES, 8,
-    c => scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, false, regionGate, budget)
+    // Perf: the input market is already parsed from the discovery HTML (seeded, no extra fetch) — skip
+    // re-scraping the same page; the seed is folded into prices below. Other countries scrape normally.
+    c => (seeded[c] && c === inputCountry)
+      ? { ok:false, country:c, reason:"seeded from discovery HTML" }
+      : scrapeCountry(targets[c], c, code, fcKey, fetchImpl, visionFn, false, regionGate, budget)
   );
   const prices = {};
   let failed = [];
