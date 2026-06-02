@@ -502,7 +502,6 @@ const T = {
     capLogoRemoved:"— logo removed —",
     capAIremoved:"— AI removed the logo —",
     capLogoByAI:"— logo removed by AI —",
-    capLogoBlurred:"— logo blurred —",
     aiRemoving:"AI is removing the logo…",
     objWithoutLabel:"the object, without the label",
     notFound:(q,detail)=>`Couldn't read official prices from that link${detail}. Make sure it's a single product's page on the brand's official site — not a category, search, or cart page. This also happens when a brand sells in only one region/currency (so there's nothing to compare across countries) or blocks automated reading.`,
@@ -542,7 +541,6 @@ const T = {
     capLogoRemoved:"— ロゴを削除 —",
     capAIremoved:"— AI がロゴを削除 —",
     capLogoByAI:"— AI がロゴを削除しました —",
-    capLogoBlurred:"— ロゴをぼかしています —",
     aiRemoving:"AI がロゴを消しています…",
     objWithoutLabel:"ラベルのない、モノそのもの",
     notFound:(q,detail)=>`そのリンクから公式価格を取得できませんでした${detail}。ブランド公式サイトの「単一商品ページ」のリンクかご確認ください（カテゴリ・検索・カートページは不可）。1つの地域・通貨でしか販売していないブランド（=各国比較の対象がない）や、自動読み取りをブロックしているサイトでも起こります。`,
@@ -828,11 +826,11 @@ function renderStage(){
   } else if(it.debrandedImg){
     imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img" src="${esc(it.debrandedImg)}" alt="${esc(it.category)}"></div><div class="obj-cap">${t('capLogoByAI')}</div></div>`;
   } else if(it.img){
-    // While the AI is working, show only "AI is removing the logo…" (no "logo blurred" caption);
-    // the "logo blurred" label is the honest fallback shown only if debrand fails.
+    // While the AI is working, show "AI is removing the logo…"; once done (or if debrand fails)
+    // show no caption — the image just stays blurred, never labeled "logo blurred".
     const caption = it.debrandPending
       ? `<div class="obj-cap" style="color:var(--gold);text-transform:none;letter-spacing:.04em;font-style:italic"><em>${t('aiRemoving')}</em></div>`
-      : `<div class="obj-cap">${t('capLogoBlurred')}</div>`;
+      : "";
     imgHtml = `<div class="object-wrap"><div class="img-holder"><img class="obj-img soft" src="${esc(it.img)}" alt="${esc(it.category)}" onerror="this.style.display='none'"></div>${caption}</div>`;
   } else {
     imgHtml = `<div class="object-wrap"><div class="obj-frame"><div class="obj-cat">${esc(it.category)}</div><div class="obj-sub">${t('objWithoutLabel')}</div></div></div>`;
