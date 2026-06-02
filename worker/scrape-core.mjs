@@ -738,12 +738,12 @@ export async function fcGetHtml(targetUrl, country, fcKey, fetchImpl = fetch, ex
     formats: ["html"],
     location: { country: COUNTRY_ISO[country] || "US", languages: [LANG_OF[country] || "en"] },
     proxy: "stealth",
-    waitFor: 2500,
+    waitFor: 4000,
     timeout: 40000,
   };
   if (extraHeaders && Object.keys(extraHeaders).length) req.headers = extraHeaders;
   const reqBody = JSON.stringify(req);
-  let res, delay = 500;
+  let res, delay = 1000;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (budget && budget.used >= budget.max) return { error: "Subrequest budget reached" };
     if (budget) budget.used++;
